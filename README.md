@@ -5,10 +5,12 @@
 Pokémon Platinum and SoulSilver compiled to run **natively on a PS Vita**. Not an emulator: the game's own
 code is built for the Vita's ARM CPU and linked into a Vita application.
 
-> **It does not run yet.** This is a port in progress, not something you can play. What works today is
-> the build: the toolchain, the platform layer, and the game's own code compiling for ARM. The renderer,
-> the audio backend and the link step are still to be written, so there is no VPK at the end of it. See
-> [docs/VITA.md](docs/VITA.md) for exactly where the line is.
+> **It boots, and it does not play yet.** This is a port in progress, not something you can play.
+> The whole build works and produces a VPK, and in the Vita3K emulator that VPK starts: the platform
+> layer comes up, the GPU comes up, and the game's own startup runs to completion and into
+> `NitroMain`. What has not happened is a frame of the actual game -- nothing has been drawn, nothing
+> has been heard, no button has been pressed. See [docs/VITA.md](docs/VITA.md) for exactly what is
+> known and what is not.
 >
 > vitapoke started as a port of [pspoke](https://github.com/IbrahimIrfan/pspoke), which does the same
 > thing for the PSP and is playable today. If you want to play rather than build, use that.
@@ -37,9 +39,13 @@ code is built for the Vita's ARM CPU and linked into a Vita application.
 | Platform layer: threads, timing, alarms, arena, pad, **real touchscreen** | Works; 27 runtime checks pass in the Vita3K emulator |
 | DS SDK replacement compiled for ARM | Works (270/271; the one failure is a module the build drops) |
 | The game's own 1016 C files compiled for ARM | Works (1016/1016) |
-| Renderer (DS 2D/3D → GXM) | Not written |
-| Audio (the DS sound engine's output) | Not written |
-| Link step: overlay layout, VPK packaging | Not written |
+| DS message queues, mutexes, the frame driver, the save file, the log | Works (compiles and links) |
+| Renderer: DS 2D composed in software, both screens on the display through vitaGL | Written; no game frame has reached it |
+| Renderer: DS 3D rasterised on the GPU | Written; unverified |
+| Audio: the DS mixer through `sceAudioOut` | Written; not yet heard |
+| Link step: overlay layout, VPK packaging | Works |
+| Boots | Works: through the game's own startup, in the Vita3K emulator |
+| Plays | **Unknown**: no real game data has been through it yet |
 | SoulSilver build driver | Not written (its sources are here; only Platinum has a driver) |
 
 Only Platinum and SoulSilver, US releases, as in pspoke. Wi-Fi, DS wireless and microphone features are
@@ -48,7 +54,8 @@ not ported and are not planned.
 ## What you need
 
 - A Mac or a Linux PC, about 3 GB of free disk space and an internet connection.
-- Your own ROM dump — but **not yet**: everything that currently builds works without one.
+- Your own ROM dump. It is not needed to *build* — you put it on the Vita's memory card and the port
+  reads it there.
 
 You don't need to install VitaSDK or any libraries yourself. The build downloads a pinned
 [VitaSDK](https://vitasdk.org) snapshot (about 100 MB) into the project folder the first time, and builds
@@ -63,18 +70,29 @@ A Vita is not needed to work on this, and is not enough to test it: see
 git clone https://github.com/martepato/vitapoke.git
 cd vitapoke
 ./build.sh setup     # pinned VitaSDK + vitaGL, about 100 MB, one time
-./build.sh game      # the DS SDK and the game's own code, compiled for ARM
+./build.sh game      # everything, ending in dist/vitapoke-platinum.vpk
 ```
 
-`./build.sh game` fetches the pinned decompilation sources (about 300 MB), generates the decompilation's
-headers, compiles the DS SDK replacement and then all 1016 of the game's C files. About six minutes from
-a clean tree on four cores. It stops there — there is nothing to link yet.
+`./build.sh game` fetches the pinned decompilation sources (about 300 MB), generates the
+decompilation's headers, compiles the DS SDK replacement, all 1016 of the game's C files, the Vita
+platform layer and the renderer, and links the lot into a VPK. About eight minutes from a clean tree
+on four cores.
+
+Then, on the Vita: install the VPK, and put your files in `ux0:data/vitapoke/` —
+
+| File | What it is |
+|---|---|
+| `Platinum.nds` | your own ROM dump (read only, never modified) |
+| `Platinum.sav` | a 512 KB DS save. `python3 scripts/make_save.py Platinum.sav` writes a blank one |
+| `log.txt` | written by the port; this is what to send with a bug report |
+
+The port will not create or resize the save file: it has to already exist and be exactly 512 KB, so
+that nothing else at that path can be overwritten.
 
 Commands:
 
 - `./build.sh setup` — check host tools, download the pinned toolchain and build its dependencies.
-- `./build.sh game [--rom FILE]` — build as far as the port reaches. The ROM is only needed for the
-  per-overlay bounds table, which the link step will want; everything before that works without it.
+- `./build.sh game` — the whole build, ending in `dist/vitapoke-platinum.vpk`. No ROM needed.
 - `./build.sh check` — the checks that need no ROM and no emulator (a few seconds).
 - `./build.sh emu-check` — run the platform layer in the Vita3K emulator (downloads it; a few minutes).
 - `./build.sh clean` — remove the build output; downloads in `.cache` are kept.
@@ -87,7 +105,14 @@ Finished phases are skipped on a rerun via stamp files in `.work/vita/`; delete 
 `./build.sh check` compiles and links the platform layer and the GPU features the renderer needs — a
 contract check, in seconds.
 
-`./build.sh emu-check` is the interesting one. It builds a test into a VPK, boots it in the
+`./build.sh boot` is the one to run after a build. It installs the VPK into
+[Vita3K](https://vita3k.org), starts it, and prints what the port wrote to
+`ux0:data/vitapoke/log.txt` -- which is how far it got and why it stopped. With
+`--rom your-dump.nds` it uses your ROM; without one, `tests/vita/make_probe_rom.py` writes a file
+shaped like a DS ROM (a header and empty tables, no game data) that is enough to test everything
+before the game's first data read.
+
+`./build.sh emu-check` is the other one. It builds a test into a VPK, boots it in the
 [Vita3K](https://vita3k.org) emulator and reads back the report, which is the only way short of hardware
 to check what the platform layer *does* rather than that it builds. It is how the DS execution lock was
 shown to work: two DS threads that interleave 248 times without it, and 0 times with it.
@@ -114,26 +139,25 @@ two games.
 
 ## Controls
 
-Planned, and mostly not implemented yet — the renderer decides the screen layout and nothing draws.
-What the platform layer already does:
-
 - The Vita's buttons map to the DS buttons (○ = A, ✕ = B, △ = X, □ = Y, L, R, START, SELECT, D-pad).
   Unlike the PSP build, **R keeps its DS meaning**: there is no screen-swap mode to bind it to.
 - The DS touch screen is **touched**. `TP_*` reads the front panel through `sceTouch`, so there is no
-  cursor and no stylus mode.
+  cursor and no stylus mode — which is also why the game's own name-entry screen is kept, where the
+  PSP build had to substitute the system keyboard.
+- Both DS screens are drawn at twice their size, side by side, with the touch screen on the right.
 
-Saves will be normal 512 KB DS saves, movable to and from a DS emulator or cartridge dump.
-`python3 scripts/make_save.py <name>.sav` writes a blank one.
+Saves are normal 512 KB DS saves, movable to and from a DS emulator or cartridge dump.
 
 ## Contributing
 
 The port is early, and the open pieces are large and fairly independent:
 
-- **the renderer** — the DS 2D compositor and 3D output on GXM (the design, and what is already settled
-  about it, is in [docs/VITA.md](docs/VITA.md)),
-- **audio** — the DS sound engine's 16 channels out through `sceAudioOut` or `sceNgs`,
-- **the link step** — the overlay layout's linker script, and VPK packaging,
-- **the on-screen keyboard** — name entry through `sceIme`,
+- **getting it to boot** — everything is written and nothing has been watched running; the log in
+  `ux0:data/vitapoke/log.txt` marks every scene the game enters,
+- **the 3D path** — written against libntr's geometry simulator and never seen to draw a triangle
+  (`port/native-vita-render/g3_backend.cpp`; the depth convention is the first thing to check),
+- **performance** — the DS's 2D is composed on the CPU, and nothing has been measured on hardware;
+  NEON in the 2D compositor and the sound mixer is the obvious next step,
 - **a SoulSilver build driver**, alongside Platinum's.
 
 Run `./build.sh check` before a pull request, and `./build.sh emu-check` if you touched the platform
@@ -153,9 +177,11 @@ No ROM data, game assets or prebuilt executables in commits. Changes to the deco
 3. It compiles the game's C code, the SDK libraries and vitapoke's Vita platform layer (`port/vita/`:
    the DS OS interfaces on psp2 — threads, alarms, timing, the arena, pad and touch) for the Vita's ARM
    CPU.
-4. The DS 3D and 2D graphics commands will be translated to the Vita's GPU by vitapoke's renderer
-   (derived from melonDS). **This part does not exist yet.**
-5. Everything will be linked into a VPK.
+4. The DS's two 2D engines are composed in software by vitapoke's renderer (derived from melonDS), and
+   its 3D output is rasterised by the Vita's GPU through vitaGL. `docs/VITA.md` explains why that
+   division, and why not GXM directly.
+5. Everything is linked into a VPK, with each DS overlay module's data laid out so the game can
+   "load" a module and get its static data freshly initialised, as the DS did.
 
 At runtime the game reads its data files (graphics, maps, sound) from your ROM on the memory card.
 

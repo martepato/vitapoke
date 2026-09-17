@@ -5,7 +5,7 @@ diff -ruN a/src/application/main_menu/main_menu.c b/src/application/main_menu/ma
          data->unk13C = 11;
          break;
      case 11:
-+#ifdef PSP_NATIVE_OFFLINE
++#ifdef VITAPOKE_OFFLINE
 +        // Native PSP offline build does not run DS wireless gift discovery.
 +        data->unk140 = 0;
 +        data->unk13C = 12;
@@ -21,7 +21,7 @@ diff -ruN a/src/application/main_menu/main_menu.c b/src/application/main_menu/ma
          break;
      }
      case 14:
-+#ifndef PSP_NATIVE_OFFLINE
++#ifndef VITAPOKE_OFFLINE
          sub_02038D64();
 +#endif
          data->unk13C = 12;
@@ -437,7 +437,7 @@ diff -ruN a/src/main.c b/src/main.c
      sub_02005D00();
      InitSoundData(Save_Chatot_Get(_02111868.unk_10.saveData), Save_PlayerData_GetOptionsAddr(_02111868.unk_10.saveData));
      Init_Timer3();
-+#ifndef PSP_NATIVE_OFFLINE
++#ifndef VITAPOKE_OFFLINE
      if (sub_02039FFC(3) == 3) {
          ShowWFCUserInfoWarning(HEAP_ID_3, 0);
      }
@@ -3701,8 +3701,8 @@ diff -ruN a/src/system.c b/src/system.c
  }
  
  void ReadKeypadAndTouchpad(void) {
-+    extern void PSPNativeInputPoll(void);
-+    PSPNativeInputPoll();
++    extern void VitaNativeInputPoll(void);
++    VitaNativeInputPoll();
      TPData rawTpData, calibTpData;
      int raw;
      if (PAD_DetectFold()) {

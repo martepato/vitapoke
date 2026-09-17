@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include "field_system.h"
 
-extern void PSPNativeMemLog(const char *fmt, ...);
+extern void VitaNativeMemLog(const char *fmt, ...);
 extern u8 __real_GetMetatileBehavior(FieldSystem *fieldSystem, int x, int z);
 extern BOOL sub_020548C0(FieldSystem *fieldSystem, int x, int z);
 
@@ -21,7 +21,7 @@ u8 __wrap_GetMetatileBehavior(FieldSystem *fieldSystem, int x, int z)
     if (count < (int)(sizeof(seen) / sizeof(seen[0]))) {
         BOOL solid = sub_020548C0(fieldSystem, x, z);
         seen[count++] = key;
-        PSPNativeMemLog("[DIAG-TILE] x=%d z=%d beh=%u solid=%d", x, z, (unsigned)behavior, solid);
+        VitaNativeMemLog("[DIAG-TILE] x=%d z=%d beh=%u solid=%d", x, z, (unsigned)behavior, solid);
         printf("[DIAG-TILE] x=%d z=%d beh=%u solid=%d\n", x, z, (unsigned)behavior, solid);
     }
     return behavior;

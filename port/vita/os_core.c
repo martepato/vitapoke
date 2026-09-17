@@ -119,14 +119,14 @@ void OS_Init(void)
 	OS_InitThread();
 	arenaLo = (uintptr_t)arena;
 	arenaHi = arenaLo + ARENA_BYTES;
-	PSPNativeMemLog("[STARTUP] OS arena initialised, 6 MiB in main backing");
+	VitaNativeMemLog("[STARTUP] OS arena initialised, 6 MiB in main backing");
 }
 
 void *OS_AllocFromArenaLo(OSArenaId id, u32 size, u32 align)
 {
 	uintptr_t p;
 	if (id != OS_ARENA_MAIN || !align || (align & (align - 1)))
-		PSPNativeFatal("OS_AllocFromArenaLo: bad arena or alignment");
+		VitaNativeFatal("OS_AllocFromArenaLo: bad arena or alignment");
 	p = (arenaLo + align - 1) & ~(uintptr_t)(align - 1);
 	if (p + size > arenaHi)
 		return NULL;
@@ -138,7 +138,7 @@ void *OS_AllocFromArenaHi(OSArenaId id, u32 size, u32 align)
 {
 	uintptr_t p;
 	if (id != OS_ARENA_MAIN || !align || (align & (align - 1)))
-		PSPNativeFatal("OS_AllocFromArenaHi: bad arena or alignment");
+		VitaNativeFatal("OS_AllocFromArenaHi: bad arena or alignment");
 	p = (arenaHi - size) & ~(uintptr_t)(align - 1);
 	if (size > arenaHi - arenaLo || p < arenaLo)
 		return NULL;
@@ -149,21 +149,21 @@ void *OS_AllocFromArenaHi(OSArenaId id, u32 size, u32 align)
 void *OS_GetInitArenaLo(OSArenaId id)
 {
 	if (id != OS_ARENA_MAIN)
-		PSPNativeFatal("OS_GetInitArenaLo: bad arena");
+		VitaNativeFatal("OS_GetInitArenaLo: bad arena");
 	return arena;
 }
 
 void *OS_GetInitArenaHi(OSArenaId id)
 {
 	if (id != OS_ARENA_MAIN)
-		PSPNativeFatal("OS_GetInitArenaHi: bad arena");
+		VitaNativeFatal("OS_GetInitArenaHi: bad arena");
 	return arena + ARENA_BYTES;
 }
 
 void OS_SetArenaLo(OSArenaId id, void *p)
 {
 	if (id != OS_ARENA_MAIN || (uintptr_t)p < (uintptr_t)arena || (uintptr_t)p > arenaHi)
-		PSPNativeFatal("OS_SetArenaLo: out of range");
+		VitaNativeFatal("OS_SetArenaLo: out of range");
 	arenaLo = (uintptr_t)p;
 }
 
@@ -171,7 +171,7 @@ void OS_SetArenaHi(OSArenaId id, void *p)
 {
 	if (id != OS_ARENA_MAIN || (uintptr_t)p < arenaLo ||
 	    (uintptr_t)p > (uintptr_t)arena + ARENA_BYTES)
-		PSPNativeFatal("OS_SetArenaHi: out of range");
+		VitaNativeFatal("OS_SetArenaHi: out of range");
 	arenaHi = (uintptr_t)p;
 }
 
@@ -326,7 +326,7 @@ void OS_WaitIrq(BOOL clear, OSIrqMask bits)
 	if (bits != OS_IE_V_BLANK) {
 		char message[64];
 		snprintf(message, sizeof message, "unsupported IRQ wait %08lx", (unsigned long)bits);
-		PSPNativeFatal(message);
+		VitaNativeFatal(message);
 	}
 	if (clear)
 		s_HW_INTR_CHECK_BUF &= ~bits;
@@ -353,7 +353,7 @@ void SIM_handleAssertionFailure(const char *file, unsigned line, const char *exp
 {
 	char message[256];
 	snprintf(message, sizeof message, "assertion %s:%u %s", file, line, expr);
-	PSPNativeFatal(message);
+	VitaNativeFatal(message);
 }
 
 void SIM_handleAssertionFailureMsg(const char *file, unsigned line, const char *fmt, ...)
@@ -364,19 +364,38 @@ void SIM_handleAssertionFailureMsg(const char *file, unsigned line, const char *
 	vsnprintf(detail, sizeof detail, fmt, args);
 	va_end(args);
 	snprintf(message, sizeof message, "SDK assertion %s:%u %s", file, line, detail);
-	PSPNativeFatal(message);
+	VitaNativeFatal(message);
 }
 
-void ErrorHandling_AssertFail(void) { PSPNativeFatal("game assertion (ErrorHandling_AssertFail)"); }
-void OS_Terminate(void) { PSPNativeFatal("OS_Terminate"); }
-void OS_IrqHandler(void) { PSPNativeFatal("unsupported direct DS network IRQ handler"); }
+/* The game's own GF_ASSERT, which in a release build keeps neither the file nor the line. The
+ * caller's address is all there is; arm-vita-eabi-nm -n on the .elf in the build tree turns it into
+ * the function that gave up. */
+void ErrorHandling_AssertFail(void)
+{
+	char message[64];
+
+	snprintf(message, sizeof message, "game assertion at %p", __builtin_return_address(0));
+	VitaNativeFatal(message);
+}
+
+/* The DS SDK's own way of giving up. In a release build OS_Panic is defined as a bare call to this,
+ * with its message compiled out, so the only thing left to report is where it was called from: run
+ * arm-vita-eabi-nm -n on the .elf in the build tree and find the symbol below that address. */
+void OS_Terminate(void)
+{
+	char message[64];
+
+	snprintf(message, sizeof message, "OS_Terminate from %p", __builtin_return_address(0));
+	VitaNativeFatal(message);
+}
+void OS_IrqHandler(void) { VitaNativeFatal("unsupported direct DS network IRQ handler"); }
 
 void OS_ResetSystem(u32 parameter)
 {
 	char message[96];
 	snprintf(message, sizeof message, "reset requested %lu; native restart unsupported",
 	         (unsigned long)parameter);
-	PSPNativeFatal(message);
+	VitaNativeFatal(message);
 }
 
 void OS_SetDPermissionsForProtectionRegion(u32 mask, u32 flags)
@@ -384,7 +403,7 @@ void OS_SetDPermissionsForProtectionRegion(u32 mask, u32 flags)
 	char message[96];
 	snprintf(message, sizeof message, "unsupported DS cartridge protection %lx/%lx",
 	         (unsigned long)mask, (unsigned long)flags);
-	PSPNativeFatal(message);
+	VitaNativeFatal(message);
 }
 
 /* The DS card's cache thresholds mean nothing here: the file system reads the ROM through ordinary
@@ -395,6 +414,6 @@ void CARD_SetCacheFlushThreshold(u32 icache, u32 dcache)
 {
 	cardIcacheThreshold = icache;
 	cardDcacheThreshold = dcache;
-	PSPNativeMemLog("[STARTUP] CARD cache thresholds %lu/%lu; synchronous stdio backend",
+	VitaNativeMemLog("[STARTUP] CARD cache thresholds %lu/%lu; synchronous stdio backend",
 	                (unsigned long)icache, (unsigned long)dcache);
 }

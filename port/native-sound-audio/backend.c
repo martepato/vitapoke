@@ -28,13 +28,13 @@ static void SetChannelPan(u32 mask,int p){for(int i=0;i<16;i++)if(mask&(1u<<i))S
 static void StartTimer(u32 ch,u32 capture,u32 alarm,u32 flags){if(capture||alarm)Unsupported(SND_COMMAND_START_TIMER);for(int i=0;i<16;i++)if(ch&(1u<<i))SND_StartChannel7(i);}
 static void StopTimer(u32 ch,u32 capture,u32 alarm,u32 flags){if(capture||alarm)Unsupported(SND_COMMAND_STOP_TIMER);for(int i=0;i<16;i++)if(ch&(1u<<i))SND_StopChannel7(i,flags);}
 static void ReadDriverInfo(SNDDriverInfo*out){memcpy(&out->work,&SNDi_Work,sizeof(SNDi_Work));memcpy(out->chCtrl,s_SIM_sndcnt,sizeof(out->chCtrl));out->workAddress=&SNDi_Work;out->lockedChannels=SND_GetLockedChannel(0);}
-void PSPNativeSoundInit(void){if(initialized)return;SND_ExChannelInit();SND_SeqInit();s_reg_SND_SOUNDCNT=0x807f;initialized=TRUE;
-#ifdef PSP_NATIVE_SAS
- {extern int PSPNativeSasInit(void);extern void PSPNativeMemLog(const char*,...);int ok=PSPNativeSasInit()==0;PSPNativeMemLog("[AUDIO] init output=%s (sceSasCore)",ok?"ready":"unavailable");}
+void VitaNativeSoundInit(void){if(initialized)return;SND_ExChannelInit();SND_SeqInit();s_reg_SND_SOUNDCNT=0x807f;initialized=TRUE;
+#ifdef VITAPOKE_SAS
+ {extern int VitaNativeSasInit(void);extern void VitaNativeMemLog(const char*,...);int ok=VitaNativeSasInit()==0;VitaNativeMemLog("[AUDIO] init output=%s (sceSasCore)",ok?"ready":"unavailable");}
 #endif
 }
-void PXI_InitFifo(void){PSPNativeSoundInit();}
-void PXI_SetFifoRecvCallback(int tag,PXIFifoCallback fn){if(tag!=PXI_FIFO_TAG_SOUND){printf("[AUDIO] unsupported FIFO callback %d\n",tag);abort();}callback=fn;PSPNativeSoundInit();}
+void PXI_InitFifo(void){VitaNativeSoundInit();}
+void PXI_SetFifoRecvCallback(int tag,PXIFifoCallback fn){if(tag!=PXI_FIFO_TAG_SOUND){printf("[AUDIO] unsupported FIFO callback %d\n",tag);abort();}callback=fn;VitaNativeSoundInit();}
 BOOL PXI_IsCallbackReady(int tag,PXIProc proc){return tag==PXI_FIFO_TAG_SOUND&&initialized;}
 int PXI_SendWordByFifo(int tag,u64 data,BOOL error){
  if(tag!=PXI_FIFO_TAG_SOUND||error){printf("[AUDIO] unsupported FIFO send %d\n",tag);return -1;}
@@ -47,9 +47,9 @@ int PXI_SendWordByFifo(int tag,u64 data,BOOL error){
  }
  if(!SNDi_SharedWork)abort();SNDi_SharedWork->finishCommandTag++;lists++;return 0;
 }
-void PSPNativeSoundPump(void){
+void VitaNativeSoundPump(void){
  u64 started=sceKernelGetSystemTimeWide();
-#ifdef PSP_NATIVE_AUDIO_PROFILE
+#ifdef VITAPOKE_AUDIO_PROFILE
  static u64 tUpd,tSeq,tEx,tLoop,tStat;u64 t0=started,t1;
  SND_UpdateExChannel();t1=sceKernelGetSystemTimeWide();tUpd+=t1-t0;t0=t1;
  SND_SeqMain(TRUE);t1=sceKernelGetSystemTimeWide();tSeq+=t1-t0;t0=t1;
@@ -62,15 +62,15 @@ void PSPNativeSoundPump(void){
  // Only the sequencer above can start a channel during this synchronous pump.
  unsigned active=0;
  for(unsigned ch=0;ch<16;ch++)if(s_SIM_sndcnt[ch]&(1u<<31))active|=1u<<ch;
- extern int PSPNativeSoundSilent;extern void SIM_Audio_AdvanceChannelSilent(u32,u32,int);extern void SIM_Audio_VerifySilentAdvance(u32,u32,int);
- if(PSPNativeSoundSilent){
+ extern int VitaNativeSoundSilent;extern void SIM_Audio_AdvanceChannelSilent(u32,u32,int);extern void SIM_Audio_VerifySilentAdvance(u32,u32,int);
+ if(VitaNativeSoundSilent){
   // Muted: no sample is decoded or mixed. Each busy channel's timer, position and
   // enable bit advance arithmetically to the values the chunked decoder would leave.
   for(unsigned pending=active;pending;){unsigned ch=__builtin_ctz(pending);pending&=pending-1;
-#ifdef PSP_NATIVE_AUDIO_VERIFY
+#ifdef VITAPOKE_AUDIO_VERIFY
    SIM_Audio_VerifySilentAdvance(174592,512,ch);
 #else
-#ifdef PSP_NATIVE_SAS
+#ifdef VITAPOKE_SAS
    SIM_Audio_AdvanceChannelSilent(87296,256,ch);   /* channel timers count at 16756991/s: 87296 per 5.21 ms pump */
 #else
    SIM_Audio_AdvanceChannelSilent(174592,512,ch);
@@ -90,24 +90,24 @@ void PSPNativeSoundPump(void){
   }
   samples+=16;left-=n;
  }
-#ifdef PSP_NATIVE_AUDIO_PROFILE
+#ifdef VITAPOKE_AUDIO_PROFILE
  t1=sceKernelGetSystemTimeWide();tLoop+=t1-t0;t0=t1;
 #endif
-#ifdef PSP_NATIVE_SAS
- {extern void PSPNativeSasSnapshot(u32);PSPNativeSasSnapshot(174592);}
+#ifdef VITAPOKE_SAS
+ {extern void VitaNativeSasSnapshot(u32);VitaNativeSasSnapshot(174592);}
 #endif
  if(SNDi_SharedWork){unsigned mask=0;for(int ch=0;ch<16;ch++)if(SND_IsChannelActive7(ch))mask|=1u<<ch;activeSeen|=mask;SNDi_SharedWork->channelStatus=mask;SNDi_SharedWork->captureStatus=0;for(unsigned i=0;i<SND_PLAYER_NUM;i++)if(SNDi_SharedWork->player[i].tickCounter>tickPeak)tickPeak=SNDi_SharedWork->player[i].tickCounter;}
-#ifdef PSP_NATIVE_AUDIO_PROFILE
+#ifdef VITAPOKE_AUDIO_PROFILE
  t1=sceKernelGetSystemTimeWide();tStat+=t1-t0;
  if(pumps%192==0){printf("[AUDIO-PROFILE] pumps=%u upd=%llu seq=%llu ex=%llu loop=%llu stat=%llu active=%04x\n",pumps,tUpd,tSeq,tEx,tLoop,tStat,active);
-#ifdef PSP_NATIVE_AUDIO_VERIFY
- {extern unsigned PSPNativeSoundSilentVerifyChecks(void),PSPNativeSoundSilentVerifyMismatches(void),PSPNativeSoundSilentVerifyStops(void);printf("[AUDIO-VERIFY] checks=%u mismatches=%u stops=%u\n",PSPNativeSoundSilentVerifyChecks(),PSPNativeSoundSilentVerifyMismatches(),PSPNativeSoundSilentVerifyStops());}
+#ifdef VITAPOKE_AUDIO_VERIFY
+ {extern unsigned VitaNativeSoundSilentVerifyChecks(void),VitaNativeSoundSilentVerifyMismatches(void),VitaNativeSoundSilentVerifyStops(void);printf("[AUDIO-VERIFY] checks=%u mismatches=%u stops=%u\n",VitaNativeSoundSilentVerifyChecks(),VitaNativeSoundSilentVerifyMismatches(),VitaNativeSoundSilentVerifyStops());}
 #endif
  tUpd=tSeq=tEx=tLoop=tStat=0;}
 #endif
  pumpMicros+=sceKernelGetSystemTimeWide()-started;
 }
-void PSPNativeSoundReport(void){printf("[AUDIO] lists=%u commands=%u pumps=%u channelSteps=%llu energy=%llu players=%08lx\n",lists,commands,pumps,samples,energy,SNDi_SharedWork?(unsigned long)SNDi_SharedWork->playerStatus:0);}
+void VitaNativeSoundReport(void){printf("[AUDIO] lists=%u commands=%u pumps=%u channelSteps=%llu energy=%llu players=%08lx\n",lists,commands,pumps,samples,energy,SNDi_SharedWork?(unsigned long)SNDi_SharedWork->playerStatus:0);}
 
-void PSPNativeSoundAdvance(u32 microseconds){clockRemainder+=(u64)microseconds*OS_SYSTEM_CLOCK;cyclePending+=clockRemainder/1000000;clockRemainder%=1000000;while(cyclePending>=SND_PROC_INTERVAL*64u){PSPNativeSoundPump();cyclePending-=SND_PROC_INTERVAL*64u;}}
-BOOL PSPNativeSoundProofValid(void){printf("[AUDIO-STATE] activeSeen=%04x tickPeak=%u pumpMicros=%llu averageUs=%llu\n",activeSeen,tickPeak,pumpMicros,pumps?pumpMicros/pumps:0);extern u32 PSPNativeAudioStateHash(void);printf("[AUDIO-HASH] samples=%08lx state=%08lx\n",(unsigned long)sampleHash,(unsigned long)PSPNativeAudioStateHash());return energy>0&&activeSeen&&tickPeak&&SNDi_SharedWork&&SNDi_SharedWork->finishCommandTag==lists;}
+void VitaNativeSoundAdvance(u32 microseconds){clockRemainder+=(u64)microseconds*OS_SYSTEM_CLOCK;cyclePending+=clockRemainder/1000000;clockRemainder%=1000000;while(cyclePending>=SND_PROC_INTERVAL*64u){VitaNativeSoundPump();cyclePending-=SND_PROC_INTERVAL*64u;}}
+BOOL VitaNativeSoundProofValid(void){printf("[AUDIO-STATE] activeSeen=%04x tickPeak=%u pumpMicros=%llu averageUs=%llu\n",activeSeen,tickPeak,pumpMicros,pumps?pumpMicros/pumps:0);extern u32 VitaNativeAudioStateHash(void);printf("[AUDIO-HASH] samples=%08lx state=%08lx\n",(unsigned long)sampleHash,(unsigned long)VitaNativeAudioStateHash());return energy>0&&activeSeen&&tickPeak&&SNDi_SharedWork&&SNDi_SharedWork->finishCommandTag==lists;}

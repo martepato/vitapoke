@@ -28,9 +28,9 @@ static void SetChannelPan(u32 mask,int p){for(int i=0;i<16;i++)if(mask&(1u<<i))S
 static void StartTimer(u32 ch,u32 capture,u32 alarm,u32 flags){if(capture||alarm)Unsupported(SND_COMMAND_START_TIMER);for(int i=0;i<16;i++)if(ch&(1u<<i))SND_StartChannel7(i);}
 static void StopTimer(u32 ch,u32 capture,u32 alarm,u32 flags){if(capture||alarm)Unsupported(SND_COMMAND_STOP_TIMER);for(int i=0;i<16;i++)if(ch&(1u<<i))SND_StopChannel7(i,flags);}
 static void ReadDriverInfo(SNDDriverInfo*out){memcpy(&out->work,&SNDi_Work,sizeof(SNDi_Work));memcpy(out->chCtrl,s_SIM_sndcnt,sizeof(out->chCtrl));out->workAddress=&SNDi_Work;out->lockedChannels=SND_GetLockedChannel(0);}
-void PSPNativeSoundInit(void){if(initialized)return;SND_ExChannelInit();SND_SeqInit();s_reg_SND_SOUNDCNT=0x807f;initialized=TRUE;}
-void PXI_InitFifo(void){PSPNativeSoundInit();}
-void PXI_SetFifoRecvCallback(int tag,PXIFifoCallback fn){if(tag!=PXI_FIFO_TAG_SOUND){printf("[AUDIO] unsupported FIFO callback %d\n",tag);abort();}callback=fn;PSPNativeSoundInit();}
+void VitaNativeSoundInit(void){if(initialized)return;SND_ExChannelInit();SND_SeqInit();s_reg_SND_SOUNDCNT=0x807f;initialized=TRUE;}
+void PXI_InitFifo(void){VitaNativeSoundInit();}
+void PXI_SetFifoRecvCallback(int tag,PXIFifoCallback fn){if(tag!=PXI_FIFO_TAG_SOUND){printf("[AUDIO] unsupported FIFO callback %d\n",tag);abort();}callback=fn;VitaNativeSoundInit();}
 BOOL PXI_IsCallbackReady(int tag,PXIProc proc){return tag==PXI_FIFO_TAG_SOUND&&initialized;}
 int PXI_SendWordByFifo(int tag,u64 data,BOOL error){
  if(tag!=PXI_FIFO_TAG_SOUND||error){printf("[AUDIO] unsupported FIFO send %d\n",tag);return -1;}
@@ -43,7 +43,7 @@ int PXI_SendWordByFifo(int tag,u64 data,BOOL error){
  }
  if(!SNDi_SharedWork)abort();SNDi_SharedWork->finishCommandTag++;lists++;return 0;
 }
-void PSPNativeSoundPump(void){
+void VitaNativeSoundPump(void){
  u64 started=sceKernelGetSystemTimeWide();
  SND_UpdateExChannel();SND_SeqMain(TRUE);SND_ExChannelMain(TRUE);pumps++;
  // One Nitro sound interval is 2728 DS OS ticks: 174592 ARM7 cycles.
@@ -65,7 +65,7 @@ void PSPNativeSoundPump(void){
  if(SNDi_SharedWork){unsigned mask=0;for(int ch=0;ch<16;ch++)if(SND_IsChannelActive7(ch))mask|=1u<<ch;activeSeen|=mask;SNDi_SharedWork->channelStatus=mask;SNDi_SharedWork->captureStatus=0;for(unsigned i=0;i<SND_PLAYER_NUM;i++)if(SNDi_SharedWork->player[i].tickCounter>tickPeak)tickPeak=SNDi_SharedWork->player[i].tickCounter;}
  pumpMicros+=sceKernelGetSystemTimeWide()-started;
 }
-void PSPNativeSoundReport(void){printf("[AUDIO] lists=%u commands=%u pumps=%u channelSteps=%llu energy=%llu players=%08lx\n",lists,commands,pumps,samples,energy,SNDi_SharedWork?(unsigned long)SNDi_SharedWork->playerStatus:0);}
+void VitaNativeSoundReport(void){printf("[AUDIO] lists=%u commands=%u pumps=%u channelSteps=%llu energy=%llu players=%08lx\n",lists,commands,pumps,samples,energy,SNDi_SharedWork?(unsigned long)SNDi_SharedWork->playerStatus:0);}
 
-void PSPNativeSoundAdvance(u32 microseconds){clockRemainder+=(u64)microseconds*OS_SYSTEM_CLOCK;cyclePending+=clockRemainder/1000000;clockRemainder%=1000000;while(cyclePending>=SND_PROC_INTERVAL*64u){PSPNativeSoundPump();cyclePending-=SND_PROC_INTERVAL*64u;}}
-BOOL PSPNativeSoundProofValid(void){printf("[AUDIO-STATE] activeSeen=%04x tickPeak=%u pumpMicros=%llu averageUs=%llu\n",activeSeen,tickPeak,pumpMicros,pumps?pumpMicros/pumps:0);extern u32 PSPNativeAudioStateHash(void);printf("[AUDIO-HASH] samples=%08lx state=%08lx\n",(unsigned long)sampleHash,(unsigned long)PSPNativeAudioStateHash());return energy>0&&activeSeen&&tickPeak&&SNDi_SharedWork&&SNDi_SharedWork->finishCommandTag==lists;}
+void VitaNativeSoundAdvance(u32 microseconds){clockRemainder+=(u64)microseconds*OS_SYSTEM_CLOCK;cyclePending+=clockRemainder/1000000;clockRemainder%=1000000;while(cyclePending>=SND_PROC_INTERVAL*64u){VitaNativeSoundPump();cyclePending-=SND_PROC_INTERVAL*64u;}}
+BOOL VitaNativeSoundProofValid(void){printf("[AUDIO-STATE] activeSeen=%04x tickPeak=%u pumpMicros=%llu averageUs=%llu\n",activeSeen,tickPeak,pumpMicros,pumps?pumpMicros/pumps:0);extern u32 VitaNativeAudioStateHash(void);printf("[AUDIO-HASH] samples=%08lx state=%08lx\n",(unsigned long)sampleHash,(unsigned long)VitaNativeAudioStateHash());return energy>0&&activeSeen&&tickPeak&&SNDi_SharedWork&&SNDi_SharedWork->finishCommandTag==lists;}

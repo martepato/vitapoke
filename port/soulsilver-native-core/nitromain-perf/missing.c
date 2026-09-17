@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-extern void PSPNativeMemLog(const char *,...);__attribute__((noreturn)) static void Missing(const char *name){PSPNativeMemLog("[SS-MISSING] %s",name);fflush(stdout);abort();}
+extern void VitaNativeMemLog(const char *,...);__attribute__((noreturn)) static void Missing(const char *name){VitaNativeMemLog("[SS-MISSING] %s",name);fflush(stdout);abort();}
 __attribute__((noreturn)) void AccessoryPortrait_Exit(void){Missing("AccessoryPortrait_Exit");}
 __attribute__((noreturn)) void AccessoryPortrait_Init(void){Missing("AccessoryPortrait_Init");}
 __attribute__((noreturn)) void AccessoryPortrait_Main(void){Missing("AccessoryPortrait_Main");}

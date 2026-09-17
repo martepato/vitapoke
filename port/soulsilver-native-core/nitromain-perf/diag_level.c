@@ -12,7 +12,7 @@
 #include "pokemon.h"
 #include "constants/pokemon.h"
 
-extern void PSPNativeMemLog(const char *fmt, ...);
+extern void VitaNativeMemLog(const char *fmt, ...);
 extern void __real_PlayerAvatar_UpdateMovement(PlayerAvatar *avatar);
 
 static void DiagBoostParty(FieldSystem *fieldSystem)
@@ -32,7 +32,7 @@ static void DiagBoostParty(FieldSystem *fieldSystem)
         CalcMonLevelAndStats(mon);
         u32 maxHp = GetMonData(mon, MON_DATA_MAX_HP, NULL);
         SetMonData(mon, MON_DATA_HP, &maxHp);
-        PSPNativeMemLog("[DIAG] party slot %d species %d -> level %u, hp %u", i, species,
+        VitaNativeMemLog("[DIAG] party slot %d species %d -> level %u, hp %u", i, species,
                         (unsigned)GetMonData(mon, MON_DATA_LEVEL, NULL), (unsigned)maxHp);
         printf("[DIAG] party slot %d species %d -> level %u\n", i, species,
                (unsigned)GetMonData(mon, MON_DATA_LEVEL, NULL));

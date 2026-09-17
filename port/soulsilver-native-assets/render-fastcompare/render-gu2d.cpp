@@ -19,12 +19,12 @@
 #include <cstdlib>
 #include <malloc.h>
 #include <array>
-extern "C" void PSPNativeMemLog(const char*,...);
+extern "C" void VitaNativeMemLog(const char*,...);
 
 static constexpr auto alphaTo5=[](){std::array<u32,256>a{};for(unsigned i=0;i<256;i++)a[i]=((i*31+127)/255)<<24;return a;}();
 static unsigned __attribute__((aligned(16))) list[262144];
 static unsigned highWater;
-extern "C" void* PSPNativeGUGetMemory(unsigned bytes){
+extern "C" void* VitaNativeGUGetMemory(unsigned bytes){
  unsigned used=sceGuCheckList();if(used+bytes+4096>sizeof(list)){printf("[GU-LIST] exhausted used=%u request=%u capacity=%u\n",used,bytes,(unsigned)sizeof(list));abort();}
  unsigned total=used+bytes;if(total>highWater)highWater=total;
  return sceGuGetMemory(bytes);
@@ -37,7 +37,7 @@ static unsigned inputKeys=0;static int mode=0,down=0,x=128,y=96;
 static unsigned bindUs=0,drawUs=0,convertUs=0,displayOffset=0,lastReadbackUs=0,last2DUs=0;
 // GE wait profile (perf port): time the CPU spends in sceGuSync (hardware-only cost, ~0 under PPSSPP) and mid-frame texture fences.
 static unsigned geSyncUs=0,geSync3DUs=0,geFences=0;
-extern "C" void PSPNativeRenderGeProfile(unsigned*syncUs,unsigned*sync3DUs,unsigned*fences){if(syncUs)*syncUs=geSyncUs;if(sync3DUs)*sync3DUs=geSync3DUs;if(fences)*fences=geFences;geSyncUs=geSync3DUs=geFences=0;}
+extern "C" void VitaNativeRenderGeProfile(unsigned*syncUs,unsigned*sync3DUs,unsigned*fences){if(syncUs)*syncUs=geSyncUs;if(sync3DUs)*sync3DUs=geSync3DUs;if(fences)*fences=geFences;geSyncUs=geSync3DUs=geFences=0;}
 #ifdef OPT_GE_ASYNC
 /* OPT_GE_ASYNC: count every sceGuFinish we send; the GE FINISH callback (interrupt) counts
    completions. The k-th callback proves the k-th FINISH executed (lists run in queue order). */
@@ -60,13 +60,13 @@ static unsigned statFallback[2],statGe[2];
 extern "C" int SSNativeCaptureWindowRows(SSNativeWindowRow rows[2][192]) __attribute__((weak));
 static SSNativeWindowRow windowRows[2][192];
 static bool rowWindows;
-extern "C" char PSPNativeOverlayText[128];
-char PSPNativeOverlayText[128];
+extern "C" char VitaNativeOverlayText[128];
+char VitaNativeOverlayText[128];
 static bool overlayInit=false;
-extern "C" void PSPNativeG3Release();
-extern "C" void PSPNativeG3TexturesComplete();
+extern "C" void VitaNativeG3Release();
+extern "C" void VitaNativeG3TexturesComplete();
 extern "C" void G3ListPendingFreeDrain();
-extern "C" void PSPNativeGUTextureFence(){
+extern "C" void VitaNativeGUTextureFence(){
  // Restart the command list without resetting GE registers or clearing buffers.
  // Pending vertices were copied into the submitted list before this fence.
  if(!openFrame){printf("[TEXTURE] fence outside frame\n");abort();}
@@ -76,7 +76,7 @@ extern "C" void PSPNativeGUTextureFence(){
 #else
  GeSyncTimed(geSyncUs);
 #endif
-PSPNativeG3TexturesComplete();G3ListPendingFreeDrain();
+VitaNativeG3TexturesComplete();G3ListPendingFreeDrain();
  // sceGuStart re-emits the SDK default framebuffer, not DrawBufferList's active target.
  unsigned fb=sceGeGetCmd(0x9c)&0x00ffffffu,fbw=sceGeGetCmd(0x9d)&0x00ffffffu;
  unsigned format=sceGeGetCmd(0xd2)&3u;fb|=(fbw&0x00ff0000u)<<8;
@@ -84,9 +84,9 @@ PSPNativeG3TexturesComplete();G3ListPendingFreeDrain();
  sceGuDrawBufferList(format,(void*)(uintptr_t)fb,fbw&0xffffu);
 }
 
-extern "C" unsigned char PSPNative_GfxRegisters[];
-static unsigned reg16(unsigned off){return *(volatile u16*)(PSPNative_GfxRegisters+off);}
-static unsigned reg32(unsigned off){return *(volatile u32*)(PSPNative_GfxRegisters+off);}
+extern "C" unsigned char VitaNative_GfxRegisters[];
+static unsigned reg16(unsigned off){return *(volatile u16*)(VitaNative_GfxRegisters+off);}
+static unsigned reg32(unsigned off){return *(volatile u32*)(VitaNative_GfxRegisters+off);}
 
 // VRAM layout (byte offsets into EDRAM): 0/0x88000 display, 0x110000 3D colour, 0x140000 3D depth
 static const u32 VRAM_3D=0x110000;
@@ -104,16 +104,16 @@ static void mapMemory(){
  memcpy(GPU::Palette,s_HW_BG_PLTT,512);memcpy(GPU::Palette+512,s_HW_OBJ_PLTT,512);
  memcpy(GPU::Palette+1024,s_HW_DB_BG_PLTT,512);memcpy(GPU::Palette+1536,s_HW_DB_OBJ_PLTT,512);
  memcpy(GPU::OAM,s_HW_OAM,1024);memcpy(GPU::OAM+1024,s_HW_DB_OAM,1024);
- GPU::VRAMMap_LCDC=0;for(unsigned i=0;i<4;i++){GPU::VRAM[i]=s_HW_LCDC_VRAM+i*0x20000;if((*(volatile u8*)(PSPNative_GfxRegisters+0x240+i)&0x87)==0x80)GPU::VRAMMap_LCDC|=1u<<i;}
+ GPU::VRAMMap_LCDC=0;for(unsigned i=0;i<4;i++){GPU::VRAM[i]=s_HW_LCDC_VRAM+i*0x20000;if((*(volatile u8*)(VitaNative_GfxRegisters+0x240+i)&0x87)==0x80)GPU::VRAMMap_LCDC|=1u<<i;}
  memset(GPU::VRAMFlat_ABGExtPal,0,32768);memset(GPU::VRAMFlat_BBGExtPal,0,32768);memset(GPU::VRAMFlat_AOBJExtPal,0,8192);memset(GPU::VRAMFlat_BOBJExtPal,0,8192);
- unsigned e=*(volatile u8*)(PSPNative_GfxRegisters+0x244);
+ unsigned e=*(volatile u8*)(VitaNative_GfxRegisters+0x244);
  if((e&0x87)==0x84)memcpy(GPU::VRAMFlat_ABGExtPal,s_HW_LCDC_VRAM+0x80000,32768);
- for(unsigned i=0;i<2;i++){unsigned c=*(volatile u8*)(PSPNative_GfxRegisters+0x245+i);const u8*src=s_HW_LCDC_VRAM+0x90000+i*0x4000;
+ for(unsigned i=0;i<2;i++){unsigned c=*(volatile u8*)(VitaNative_GfxRegisters+0x245+i);const u8*src=s_HW_LCDC_VRAM+0x90000+i*0x4000;
   if((c&0x87)==0x84)memcpy(GPU::VRAMFlat_ABGExtPal+((c&8)?16384:0),src,16384);
   if((c&0x87)==0x85)memcpy(GPU::VRAMFlat_AOBJExtPal,src,8192);
  }
- if((*(volatile u8*)(PSPNative_GfxRegisters+0x248)&0x87)==0x82)memcpy(GPU::VRAMFlat_BBGExtPal,s_HW_LCDC_VRAM+0x98000,32768);
- if((*(volatile u8*)(PSPNative_GfxRegisters+0x249)&0x87)==0x83)memcpy(GPU::VRAMFlat_BOBJExtPal,s_HW_LCDC_VRAM+0xa0000,8192);
+ if((*(volatile u8*)(VitaNative_GfxRegisters+0x248)&0x87)==0x82)memcpy(GPU::VRAMFlat_BBGExtPal,s_HW_LCDC_VRAM+0x98000,32768);
+ if((*(volatile u8*)(VitaNative_GfxRegisters+0x249)&0x87)==0x83)memcpy(GPU::VRAMFlat_BOBJExtPal,s_HW_LCDC_VRAM+0xa0000,8192);
 }
 static void FrameStart(GPU2D::Unit&u){
  u.VBlankEnd();
@@ -138,12 +138,12 @@ static void AdvanceAtlasFrame(){
  for(auto&engine:bgAtlas)for(auto&a:engine)a.gen=0;
  ++frameGen;
 }
-extern "C" void PSPNativeG3TrimCache();
+extern "C" void VitaNativeG3TrimCache();
 static unsigned atlasBytes;
 static u8*AtlasData(Atlas&a,unsigned bytes=65536){
  if(a.data){if(a.capacity!=bytes){printf("[ATLAS] inconsistent capacity\n");abort();}return a.data;}
  a.data=(u8*)memalign(64,bytes);
- if(!a.data){PSPNativeG3TrimCache();a.data=(u8*)memalign(64,bytes);}
+ if(!a.data){VitaNativeG3TrimCache();a.data=(u8*)memalign(64,bytes);}
  if(!a.data){printf("[ATLAS] allocation failed bytes=%u live=%u\n",bytes,atlasBytes);abort();}
  a.capacity=bytes;atlasBytes+=bytes;memset(a.data,0,bytes);return a.data;
 }
@@ -183,7 +183,7 @@ static const u16*curClut=nullptr;static int curClutMask=-1,curBank=-1;
 static void UseClut(const u16*clut,int mask,int bank){
  if(curClut!=clut||clut==clutExt){
   const u16*source=clut;
-  if(clut==clutExt){u16*snapshot=(u16*)(((uintptr_t)PSPNativeGUGetMemory(512+15)+15)&~(uintptr_t)15);memcpy(snapshot,clut,512);sceKernelDcacheWritebackRange(snapshot,512);source=snapshot;}
+  if(clut==clutExt){u16*snapshot=(u16*)(((uintptr_t)VitaNativeGUGetMemory(512+15)+15)&~(uintptr_t)15);memcpy(snapshot,clut,512);sceKernelDcacheWritebackRange(snapshot,512);source=snapshot;}
   sceGuClutLoad(16,source);curClut=clut;curClutMask=-1;
  }
  if(curClutMask!=mask||curBank!=bank){sceGuClutMode(GU_PSM_5551,0,mask,bank);curClutMask=mask;curBank=bank;}
@@ -255,7 +255,7 @@ static void DrawTextBG(GPU2D::Unit&u,int bg,bool blend){
    u32 off=tilemap+((my&31)<<6)+((mx&31)<<1);if(wide&&(mx&32))off+=0x800;if(tall&&(my&32))off+=wide?0x1000:0x800;
    u16 e=*(const u16*)&vram[off&mask];unsigned g=bpp8?(extpal?(e>>12):0):(e>>12);groupTiles[g]++;
   }}
- for(int g=0;g<16;g++){groups[g].v=groupTiles[g]?(V*)PSPNativeGUGetMemory(sizeof(V)*2*groupTiles[g]):nullptr;groups[g].n=0;}
+ for(int g=0;g<16;g++){groups[g].v=groupTiles[g]?(V*)VitaNativeGUGetMemory(sizeof(V)*2*groupTiles[g]):nullptr;groups[g].n=0;}
  for(int ty=0;ty<25;ty++){int my=((yoff>>3)+ty);int sy=ty*8-(yoff&7);if(sy>=192)break;
   for(int tx=0;tx<33;tx++){int mx=((xoff>>3)+tx);int sx=tx*8-(xoff&7);if(sx>=256)break;
    u32 off=tilemap+((my&31)<<6)+((mx&31)<<1);if(wide&&(mx&32))off+=0x800;if(tall&&(my&32))off+=wide?0x1000:0x800;
@@ -300,7 +300,7 @@ static void DrawAffineBG(GPU2D::Unit&u,int bg,bool blend){
   sceKernelDcacheWritebackRange(pixels,256*192);
   if(blend&&u.EVA==0&&u.EVB>=16)return;SetBlendAlpha(blend,u.EVA,u.EVB);UseClut(clutBG8[u.Num],255,0);
   sceGuTexMode(GU_PSM_T8,0,0,0);sceGuTexImage(0,256,256,256,pixels);sceGuTexFlush();curTex=nullptr;curTexFmt=-1;
-  V*v=(V*)PSPNativeGUGetMemory(2*sizeof(V));v[0]={0,0,0,0,0};v[1]={256,192,256,192,0};
+  V*v=(V*)VitaNativeGUGetMemory(2*sizeof(V));v[0]={0,0,0,0,0};v[1]={256,192,256,192,0};
   sceGuDrawArray(GU_SPRITES,GU_TEXTURE_16BIT|GU_VERTEX_16BIT|GU_TRANSFORM_2D,2,0,v);return;
  }
 
@@ -312,7 +312,7 @@ static void DrawAffineBG(GPU2D::Unit&u,int bg,bool blend){
  if(blend&&u.EVA==0&&u.EVB>=16)return;SetBlendAlpha(blend,u.EVA,u.EVB);
  unsigned counts[16]={};
  for(int y=0;y<ny;y++)for(int x=0;x<nx;x++){unsigned off=yr[y].tile*(size/8)+xr[x].tile;u16 e=ext?*(const u16*)&vram[(map+off*2)&mask]:vram[(map+off)&mask];counts[ep?e>>12:0]++;}
- V*verts[16];unsigned used[16]={};for(int g=0;g<16;g++)verts[g]=counts[g]?(V*)PSPNativeGUGetMemory(counts[g]*2*sizeof(V)):nullptr;
+ V*verts[16];unsigned used[16]={};for(int g=0;g<16;g++)verts[g]=counts[g]?(V*)VitaNativeGUGetMemory(counts[g]*2*sizeof(V)):nullptr;
  for(int y=0;y<ny;y++)for(int x=0;x<nx;x++){
   Run xx=xr[x],yy=yr[y];unsigned off=yy.tile*(size/8)+xx.tile;u16 e=ext?*(const u16*)&vram[(map+off*2)&mask]:vram[(map+off)&mask];unsigned tile=ext?(e&1023):e,g=ep?e>>12:0;
   int x0=((rx+xx.begin*a)>>8)-xx.tile*8,y0=((ry+yy.begin*dd)>>8)-yy.tile*8;
@@ -329,7 +329,7 @@ static void Draw3DLayer(bool blend){
  sceGuTexMode(GU_PSM_8888,0,0,0);curTexFmt=GU_PSM_8888;sceGuTexImage(0,256,256,256,(u8*)sceGeEdramGetAddr()+VRAM_3D);curTex=nullptr;
  /* 3D colour is premultiplied by coverage (alpha-3D fix, see g3_backend.cpp DrawVertices): src*1 + dst*(1-a). */
  sceGuEnable(GU_BLEND);sceGuBlendFunc(GU_ADD,GU_FIX,GU_ONE_MINUS_SRC_ALPHA,0xFFFFFF,0);
- V*v=(V*)PSPNativeGUGetMemory(2*sizeof(V));v[0]={0,0,0,0,0};v[1]={256,192,256,192,0};
+ V*v=(V*)VitaNativeGUGetMemory(2*sizeof(V));v[0]={0,0,0,0,0};v[1]={256,192,256,192,0};
  sceGuDrawArray(GU_SPRITES,GU_TEXTURE_16BIT|GU_VERTEX_16BIT|GU_TRANSFORM_2D,2,0,v);
  sceGuDisable(GU_BLEND);curTexFmt=-1;
  (void)blend;
@@ -373,7 +373,7 @@ static void DrawSprites(GPU2D::Unit&u,int prio,bool blendMode1,bool windowPass){
    float det=pa*pd-pb*pc;if(det==0.0f)continue;float id=1.0f/det;inv[0]=pd*id;inv[1]=-pb*id;inv[2]=-pc*id;inv[3]=pa*id;
    int x0=sx<0?0:sx,y0=sy<0?0:sy,x1=sx+bw>256?256:sx+bw,y1=sy+bh>192?192:sy+bh;sceGuScissor(x0,y0,x1,y1);
   }
-  Batch b;b.v=(V*)PSPNativeGUGetMemory(sizeof(V)*2*64);b.n=0;TBatch tb;tb.v=affine?(V*)PSPNativeGUGetMemory(sizeof(V)*6*64):nullptr;tb.n=0;const u8*curAtlas=nullptr;
+  Batch b;b.v=(V*)VitaNativeGUGetMemory(sizeof(V)*2*64);b.n=0;TBatch tb;tb.v=affine?(V*)VitaNativeGUGetMemory(sizeof(V)*6*64):nullptr;tb.n=0;const u8*curAtlas=nullptr;
   for(u32 ty=0;ty<tilesY;ty++)for(u32 tx=0;tx<tilesX;tx++){
    u32 ctx=hf?(tilesX-1-tx):tx,cty=vf?(tilesY-1-ty):ty;
    u32 idx;
@@ -394,7 +394,7 @@ static void DrawSprites(GPU2D::Unit&u,int prio,bool blendMode1,bool windowPass){
 // A layer allowed in a set of regions is tested with NOTEQUAL 0 and the union of the codes' bits.
 static bool winActive=false;
 static void SetupRowWindows(GPU2D::Unit&u);
-static void FillRect(int x0,int y0,int x1,int y1){if(x1<=x0||y1<=y0)return;struct C{u32 c;s16 x,y,z;};C*v=(C*)PSPNativeGUGetMemory(2*sizeof(C));v[0]={0,(s16)x0,(s16)y0,0};v[1]={0,(s16)x1,(s16)y1,0};sceGuDrawArray(GU_SPRITES,GU_COLOR_8888|GU_VERTEX_16BIT|GU_TRANSFORM_2D,2,0,v);}
+static void FillRect(int x0,int y0,int x1,int y1){if(x1<=x0||y1<=y0)return;struct C{u32 c;s16 x,y,z;};C*v=(C*)VitaNativeGUGetMemory(2*sizeof(C));v[0]={0,(s16)x0,(s16)y0,0};v[1]={0,(s16)x1,(s16)y1,0};sceGuDrawArray(GU_SPRITES,GU_COLOR_8888|GU_VERTEX_16BIT|GU_TRANSFORM_2D,2,0,v);}
 static void DrawSprites(GPU2D::Unit&u,int prio,bool blendMode1,bool windowPass);
 static void SetupWindows(GPU2D::Unit&u){
  if(rowWindows){SetupRowWindows(u);return;}
@@ -456,7 +456,7 @@ static void LayerStencil(GPU2D::Unit&u,int layer){
 static void DrawBrightness(unsigned mode,unsigned factor){
  if(!mode||!factor)return;if(factor>16)factor=16;u32 a=factor*255/16;u32 col=(mode==1?0x00FFFFFF:0)|(a<<24);
  sceGuDisable(GU_TEXTURE_2D);sceGuEnable(GU_BLEND);sceGuBlendFunc(GU_ADD,GU_SRC_ALPHA,GU_ONE_MINUS_SRC_ALPHA,0,0);
- struct C{u32 c;s16 x,y,z;};C*v=(C*)PSPNativeGUGetMemory(2*sizeof(C));v[0]={col,0,0,0};v[1]={col,256,192,0};
+ struct C{u32 c;s16 x,y,z;};C*v=(C*)VitaNativeGUGetMemory(2*sizeof(C));v[0]={col,0,0,0};v[1]={col,256,192,0};
  sceGuDrawArray(GU_SPRITES,GU_COLOR_8888|GU_VERTEX_16BIT|GU_TRANSFORM_2D,2,0,v);
  sceGuDisable(GU_BLEND);sceGuEnable(GU_TEXTURE_2D);
 }
@@ -507,10 +507,10 @@ static void RenderEngineSoft(GPU2D::Unit&u,bool need3D){
  sceKernelDcacheWritebackRange(raw[u.Num],256*192*sizeof(u32));
 }
 
-extern "C" void PSPNativeRenderSetInput(unsigned keys,int touchMode,int touchDown,int tx,int ty){inputKeys=keys;mode=touchMode;down=touchDown;x=tx;y=ty;}
-extern "C" unsigned PSPNativeRenderLastDrawMask(){return lastDraw;}
-extern "C" unsigned PSPNativeRenderFrameCount(){return frames;}
-extern "C" int PSPNativeRenderInit(){
+extern "C" void VitaNativeRenderSetInput(unsigned keys,int touchMode,int touchDown,int tx,int ty){inputKeys=keys;mode=touchMode;down=touchDown;x=tx;y=ty;}
+extern "C" unsigned VitaNativeRenderLastDrawMask(){return lastDraw;}
+extern "C" unsigned VitaNativeRenderFrameCount(){return frames;}
+extern "C" int VitaNativeRenderInit(){
  if(initialized)return 0;frames=0;displayOffset=0;engineA.Reset();engineB.Reset();sceGuInit();
  sceGuStart(GU_DIRECT,list);sceGuDrawBuffer(GU_PSM_8888,(void*)0,512);sceGuDispBuffer(480,272,(void*)0x88000,512);
  sceGuScissor(0,0,480,272);sceGuEnable(GU_SCISSOR_TEST);sceGuFinish();sceGuSync(0,0);sceGuDisplay(GU_TRUE);
@@ -520,7 +520,7 @@ extern "C" int PSPNativeRenderInit(){
  G3SIM_MtxMode(GX_MTXMODE_TEXTURE);G3SIM_Identity();G3SIM_MtxMode(GX_MTXMODE_PROJECTION);G3SIM_Identity();G3SIM_MtxMode(GX_MTXMODE_POSITION_VECTOR);G3SIM_Identity();initialized=true;
  printf("[GU2D] GE 2D compositor active\n");return 0;
 }
-extern "C" int PSPNativeRenderBegin(){
+extern "C" int VitaNativeRenderBegin(){
  if(!initialized||openFrame)return -1;openFrame=true;sceGuStart(GU_DIRECT,list);sceGuDrawBufferList(GU_PSM_8888,(void*)VRAM_3D,256);
  sceGuDepthBuffer((void*)0x140000,256);sceGuDepthRange(0,65535);sceGuOffset(2048-128,2048-96);sceGuViewport(2048,2048,256,192);sceGuScissor(0,0,256,192);
  sceGuEnable(GU_SCISSOR_TEST);sceGuEnable(GU_DEPTH_TEST);sceGuDepthFunc(GU_LEQUAL);sceGuDisable(GU_CULL_FACE);sceGuDisable(GU_BLEND);sceGuDisable(GU_TEXTURE_2D);
@@ -528,8 +528,8 @@ extern "C" int PSPNativeRenderBegin(){
  sceGuEnable(GU_STENCIL_TEST);sceGuStencilFunc(GU_ALWAYS,255,255);sceGuStencilOp(GU_KEEP,GU_KEEP,GU_REPLACE);sceGuClearStencil(0);
  sceGuClearColor(0);sceGuClearDepth(65535);sceGuClear(GU_COLOR_BUFFER_BIT|GU_DEPTH_BUFFER_BIT|GU_STENCIL_BUFFER_BIT);G3SIM_DrawCleanUp();return 0;
 }
-extern "C" void PSPNativeOskFrameHook(void) __attribute__((weak));
-extern "C" int PSPNativeOskIsActive(void) __attribute__((weak));
+extern "C" void VitaNativeOskFrameHook(void) __attribute__((weak));
+extern "C" int VitaNativeOskIsActive(void) __attribute__((weak));
 
 #ifdef OPT_GE_ASYNC
 /* ---- OPT_GE_ASYNC: pipelined 2D/display pass --------------------------------------------
@@ -579,11 +579,11 @@ static void AsyncInit(){
  flipEvt=sceKernelCreateEventFlag("geflip_evt",0,0,nullptr);
  if(flipLock>=0&&flipEvt>=0)flipThread=sceKernelCreateThread("geflip",FlipThread,0x14,0x4000,0,nullptr);
  if(flipLock<0||flipEvt<0||flipThread<0||sceKernelStartThread(flipThread,0,nullptr)<0){
-  PSPNativeMemLog("[GEASYNC] init FAILED lock=%08x evt=%08x thread=%08x; synchronous presentation",(unsigned)flipLock,(unsigned)flipEvt,(unsigned)flipThread);
+  VitaNativeMemLog("[GEASYNC] init FAILED lock=%08x evt=%08x thread=%08x; synchronous presentation",(unsigned)flipLock,(unsigned)flipEvt,(unsigned)flipThread);
   return;}
  geFinishSent=0;geFinishDone=0;
  sceGuSetCallback(GU_CALLBACK_FINISH,GeFinishCallback);
- asyncOn=true;PSPNativeMemLog("[GEASYNC] enabled (flip thread 0x14, list2D %u KB)",(unsigned)(sizeof(list2D)/1024));
+ asyncOn=true;VitaNativeMemLog("[GEASYNC] enabled (flip thread 0x14, list2D %u KB)",(unsigned)(sizeof(list2D)/1024));
 }
 // Main thread, only right after a full sceGuSync: the GE is idle, so any pending list is done.
 static void AsyncSettle(){
@@ -612,12 +612,12 @@ static unsigned AsyncResourceHash(unsigned used){
 static void AsyncLogWindow(){
  sceKernelWaitSema(flipLock,1,nullptr);
  unsigned n=asAsync+asSync;
-#ifdef PSP_NATIVE_DEV
- PSPNativeMemLog("[GEASYNC] presents=%u async=%u sync_osk=%u flip_thread=%u flip_main=%u flip_lat_avg_us=%u flip_lat_max_us=%u ",
+#ifdef VITAPOKE_DEV
+ VitaNativeMemLog("[GEASYNC] presents=%u async=%u sync_osk=%u flip_thread=%u flip_main=%u flip_lat_avg_us=%u flip_lat_max_us=%u ",
   n,asAsync,asSync,asFlipThread,asFlipMain,(asFlipThread+asFlipMain)?asLatSum/(asFlipThread+asFlipMain):0,asLatMax);
- PSPNativeMemLog("[GEASYNC] vblank_guard=%u guard_us=%u lock_us=%u fence_wait_us=%u sync_err=%u finish_sent=%u finish_cb=%u late_max=%u list2d_high=%u list_high=%u",
+ VitaNativeMemLog("[GEASYNC] vblank_guard=%u guard_us=%u lock_us=%u fence_wait_us=%u sync_err=%u finish_sent=%u finish_cb=%u late_max=%u list2d_high=%u list_high=%u",
   asGuard,asGuardUs,asLockUs,asFenceUs,asSyncErr,geFinishSent,(unsigned)geFinishDone,asLateMax,asList2DHigh,highWater);
- {PSPNativeMemLog("[GEASYNC] deferred_free_high=%u",G3ListPendingFreeHigh());}
+ {VitaNativeMemLog("[GEASYNC] deferred_free_high=%u",G3ListPendingFreeHigh());}
 #else
  (void)n;
 #endif
@@ -628,7 +628,7 @@ static void AsyncLogWindow(){
 #endif
 extern "C" void G3SIM_FlushDeferred();
 static int Present(bool waitForVblank){
- if(!openFrame)return -1;G3SIM_FlushArray();G3SIM_FlushDeferred();if(frames%300==0)printf("[GU-LIST] frame=%u high_water=%u capacity=%u\n",frames,highWater,(unsigned)sizeof(list));GuFinishCounted();GeSyncTimed(geSync3DUs);PSPNativeG3TexturesComplete();G3ListPendingFreeDrain();openFrame=false;
+ if(!openFrame)return -1;G3SIM_FlushArray();G3SIM_FlushDeferred();if(frames%300==0)printf("[GU-LIST] frame=%u high_water=%u capacity=%u\n",frames,highWater,(unsigned)sizeof(list));GuFinishCounted();GeSyncTimed(geSync3DUs);VitaNativeG3TexturesComplete();G3ListPendingFreeDrain();openFrame=false;
 #ifdef OPT_GE_ASYNC
  AsyncSettle();
 #ifdef OPT_GE_ASYNC_VERIFY
@@ -651,7 +651,7 @@ static int Present(bool waitForVblank){
   if(!ge[e]){RenderEngineSoft(u,e==0&&(u.DispCnt&8)&&((u.DispCnt>>16)&3)==1);statFallback[e]++;texsrc[e]=raw[e];texfmt[e]=GU_PSM_8888;}
   else{statGe[e]++;texsrc[e]=(u8*)sceGeEdramGetAddr()+VRAM_ENGINE[e];texfmt[e]=GU_PSM_8888;}}
 #ifdef OPT_GE_ASYNC
- const bool useAsync=asyncOn&&!waitForVblank&&!(PSPNativeOskIsActive&&PSPNativeOskIsActive());
+ const bool useAsync=asyncOn&&!waitForVblank&&!(VitaNativeOskIsActive&&VitaNativeOskIsActive());
  if(useAsync){
   // The buffer about to be drawn was on screen until the last flip took effect: never let the
   // GE write it before a vblank has passed since that flip (only triggers on very short frames).
@@ -671,10 +671,10 @@ static int Present(bool waitForVblank){
  const bool swap=mode!=0;
  const short bigX=MAIN_X,bigY=MAIN_Y,bigW=MAIN_W,bigH=MAIN_H,smallX=SUB_X,smallY=SUB_Y,smallW=SUB_W,smallH=SUB_H;
  for(unsigned screen=0;screen<2;screen++){unsigned e=(power&0x8000)?screen:1-screen;const bool big=(screen==1)==swap;
-  sceGuTexFilter(big?GU_NEAREST:GU_LINEAR,big?GU_NEAREST:GU_LINEAR);sceGuTexImage(0,256,256,256,texsrc[e]);V*v=(V*)PSPNativeGUGetMemory(2*sizeof(V));
+  sceGuTexFilter(big?GU_NEAREST:GU_LINEAR,big?GU_NEAREST:GU_LINEAR);sceGuTexImage(0,256,256,256,texsrc[e]);V*v=(V*)VitaNativeGUGetMemory(2*sizeof(V));
   short px=big?bigX:smallX,py=big?bigY:smallY,pw=big?bigW:smallW,ph=big?bigH:smallH;
   v[0]={0,0,px,py,0};v[1]={256,192,short(px+pw),short(py+ph),0};sceGuDrawArray(GU_SPRITES,GU_TEXTURE_16BIT|GU_VERTEX_16BIT|GU_TRANSFORM_2D,2,0,v);}
- if(mode){struct C{u32 color;short x,y,z;};C*c=(C*)PSPNativeGUGetMemory(4*sizeof(C));short cx=bigX+(x*bigW)/256,cy=bigY+(y*bigH)/192;u32 col=down?0xff00ffff:0xffffffff;c[0]={col,short(cx-3),cy,0};c[1]={col,short(cx+3),cy,0};c[2]={col,cx,short(cy-3),0};c[3]={col,cx,short(cy+3),0};sceGuDisable(GU_TEXTURE_2D);sceGuDrawArray(GU_LINES,GU_COLOR_8888|GU_VERTEX_16BIT|GU_TRANSFORM_2D,4,0,c);}
+ if(mode){struct C{u32 color;short x,y,z;};C*c=(C*)VitaNativeGUGetMemory(4*sizeof(C));short cx=bigX+(x*bigW)/256,cy=bigY+(y*bigH)/192;u32 col=down?0xff00ffff:0xffffffff;c[0]={col,short(cx-3),cy,0};c[1]={col,short(cx+3),cy,0};c[2]={col,cx,short(cy-3),0};c[3]={col,cx,short(cy+3),0};sceGuDisable(GU_TEXTURE_2D);sceGuDrawArray(GU_LINES,GU_COLOR_8888|GU_VERTEX_16BIT|GU_TRANSFORM_2D,4,0,c);}
  sceKernelDcacheWritebackAll();
 #ifdef OPT_GE_ASYNC
  if(useAsync){
@@ -685,7 +685,7 @@ static int Present(bool waitForVblank){
 #endif
   sceKernelWaitSema(flipLock,1,nullptr);
   pend.valid=true;pend.target=geFinishSent;pend.offset=displayOffset;pend.queuedUs=sceKernelGetSystemTimeLow();
-  memcpy(pend.text,PSPNativeOverlayText,sizeof(pend.text));pend.text[sizeof(pend.text)-1]=0;asAsync++;
+  memcpy(pend.text,VitaNativeOverlayText,sizeof(pend.text));pend.text[sizeof(pend.text)-1]=0;asAsync++;
   sceKernelSignalSema(flipLock,1);
   sceKernelSetEventFlag(flipEvt,1);
   convertUs=sceKernelGetSystemTimeLow()-t2;last2DUs=sceKernelGetSystemTimeLow()-t0;lastReadbackUs=0;
@@ -697,29 +697,29 @@ static int Present(bool waitForVblank){
  if(asyncOn){asSync++;if(frames%600==599)AsyncLogWindow();}
 #endif
  GuFinishCounted();GeSyncTimed(geSyncUs);
- if(PSPNativeOverlayText[0]){
+ if(VitaNativeOverlayText[0]){
   if(!overlayInit){pspDebugScreenInitEx((void*)0x44000000,PSP_DISPLAY_PIXEL_FORMAT_8888,0);overlayInit=true;}
-  pspDebugScreenSetOffset(displayOffset);pspDebugScreenSetXY(67-(int)strlen(PSPNativeOverlayText),33);pspDebugScreenSetTextColor(0xFF00FF00);pspDebugScreenSetBackColor(0xFF000000);pspDebugScreenPrintf("%s",PSPNativeOverlayText);
+  pspDebugScreenSetOffset(displayOffset);pspDebugScreenSetXY(67-(int)strlen(VitaNativeOverlayText),33);pspDebugScreenSetTextColor(0xFF00FF00);pspDebugScreenSetBackColor(0xFF000000);pspDebugScreenPrintf("%s",VitaNativeOverlayText);
  }
  convertUs=sceKernelGetSystemTimeLow()-t2;last2DUs=sceKernelGetSystemTimeLow()-t0;lastReadbackUs=0;
  /* PSP on-screen keyboard (naming screen substitute), ported from the Platinum renderer:
     ticked once per displayed frame after this frame's GE work is flushed; no buffer flip
     while it is up (it draws into the buffer sceGuDrawBufferList last selected). */
- { bool oskActive=PSPNativeOskIsActive&&PSPNativeOskIsActive();
-   if(oskActive&&PSPNativeOskFrameHook)PSPNativeOskFrameHook();
+ { bool oskActive=VitaNativeOskIsActive&&VitaNativeOskIsActive();
+   if(oskActive&&VitaNativeOskFrameHook)VitaNativeOskFrameHook();
    if(waitForVblank)sceDisplayWaitVblankStart();sceDisplaySetFrameBuf((void*)((u8*)sceGeEdramGetAddr()+displayOffset),512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);if(!oskActive)displayOffset^=0x88000;frames++; }
  if(frames%300==0)printf("[GU2D] frames=%u ge A=%u B=%u soft A=%u B=%u\n",frames,statGe[0],statGe[1],statFallback[0],statFallback[1]);
  return 0;
 }
-extern "C" void PSPNativeRenderShutdown(){
+extern "C" void VitaNativeRenderShutdown(){
 #ifdef OPT_GE_ASYNC
- if(asyncOn){if(openFrame)GuFinishCounted();sceGuSync(0,0);AsyncSettle();if(openFrame){PSPNativeG3TexturesComplete();openFrame=false;}
+ if(asyncOn){if(openFrame)GuFinishCounted();sceGuSync(0,0);AsyncSettle();if(openFrame){VitaNativeG3TexturesComplete();openFrame=false;}
   flipQuit=1;sceKernelSetEventFlag(flipEvt,1);sceKernelWaitThreadEnd(flipThread,nullptr);sceKernelDeleteThread(flipThread);
   sceGuSetCallback(GU_CALLBACK_FINISH,nullptr);sceKernelDeleteEventFlag(flipEvt);sceKernelDeleteSema(flipLock);flipEvt=flipLock=flipThread=-1;asyncOn=false;}
 #endif
- if(openFrame){sceGuFinish();sceGuSync(0,0);PSPNativeG3TexturesComplete();openFrame=false;}if(initialized){sceGuSync(0,0);PSPNativeG3Release();ReleaseAtlases();sceGuDisplay(GU_FALSE);sceGuTerm();initialized=false;}}
-extern "C" unsigned PSPNativeRenderTestPixel(unsigned e,unsigned x,unsigned y){u32 c=__builtin_allegrex_wsbw(raw[e&1][(y%192)*256+(x%256)]);return (c>>8)|(c<<24);}
-extern "C" void PSPNativeRenderGetTimings(unsigned*r,unsigned*s){if(r)*r=lastReadbackUs;if(s)*s=last2DUs;}
+ if(openFrame){sceGuFinish();sceGuSync(0,0);VitaNativeG3TexturesComplete();openFrame=false;}if(initialized){sceGuSync(0,0);VitaNativeG3Release();ReleaseAtlases();sceGuDisplay(GU_FALSE);sceGuTerm();initialized=false;}}
+extern "C" unsigned VitaNativeRenderTestPixel(unsigned e,unsigned x,unsigned y){u32 c=__builtin_allegrex_wsbw(raw[e&1][(y%192)*256+(x%256)]);return (c>>8)|(c<<24);}
+extern "C" void VitaNativeRenderGetTimings(unsigned*r,unsigned*s){if(r)*r=lastReadbackUs;if(s)*s=last2DUs;}
 extern "C" unsigned RenderStage(unsigned stage){return stage==0?bindUs:stage==1?drawUs:convertUs;}
-extern "C" int PSPNativeRenderPresent(){return Present(true);}
-extern "C" int PSPNativeRenderPresentNoWait(){return Present(false);}
+extern "C" int VitaNativeRenderPresent(){return Present(true);}
+extern "C" int VitaNativeRenderPresentNoWait(){return Present(false);}

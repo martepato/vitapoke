@@ -2,11 +2,11 @@
 #include <nitro.h>
 #include "system.h"
 #include "native_window_rows.h"
-extern unsigned char PSPNative_GfxRegisters[];
+extern unsigned char VitaNative_GfxRegisters[];
 static void Snapshot(SSNativeWindowRow rows[2][192],unsigned line)
 {
     for(unsigned e=0;e<2;e++){
-        const volatile u16 *regs=(const volatile u16*)(PSPNative_GfxRegisters+e*0x1000);
+        const volatile u16 *regs=(const volatile u16*)(VitaNative_GfxRegisters+e*0x1000);
         rows[e][line].enable=regs[0]&0xe000;
         for(unsigned i=0;i<6;i++)rows[e][line].reg[i]=regs[0x20+i];
     }

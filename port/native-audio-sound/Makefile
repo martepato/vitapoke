@@ -1,9 +1,14 @@
 TARGET = native-sound
 OBJS = audio_bank.o audio_loader.o audio_backend.o audio_seq.o audio_exchannel.o audio_channel.o audio_engine.o mic_pm.o os_sync.o backup.o savedata.o mi_memory.o mi_dma.o input.o rtc.o os_vram.o backing.o main.o romfs.o boot.o platform.o system.o heap.o math_util.o sys_task_manager.o graphics_registers.o gx.o gx_vramcnt.o gxstate.o
 INCDIR = ../native-audio-probe/include ../native-graphics/libntr/libraries/sim/include ../native-graphics/libntr/libraries/mi/src ../native-backup-probe/include include ../native-probe/backing/include ../native-graphics/libntr/libraries/gx/include ../native-graphics/alias-proof/include ../native-probe/libntrdwc/include ../native-probe/libntrsystem/include ../native-probe/generated ../native-probe/pokeplatinum/include ../native-graphics/libntr/include
+# NOPCH is CFLAGS without the game's precompiled header, for the two sources below that need the
+# SDK's instead. It is a text substitution, not a filter-out, because "-include" and the path are two
+# words and dropping them one at a time would leave the other behind.
+NOPCH = $(subst -include ../native-probe/pokeplatinum/include/pch/global_pch.h,,$(CFLAGS))
 CFLAGS = -D_NITRO -DPM_KEEP_ASSERTS -DPOKEPLATINUM_GENERATED_ENUM -O2 @TARGETCC@ -std=gnu99 -DSDL_MAIN_HANDLED -DSDK_PORT -DSDK_X86 -DSDK_TS -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM -include ../native-probe/pokeplatinum/include/pch/global_pch.h -ffunction-sections -fdata-sections
-# Sound plays through the PSP sceSasCore voice mixer (sas_out.c); the CPU mixer is not used.
-CFLAGS += -DPSP_NATIVE_SAS
+# The Vita has no hardware voice mixer to hand the DS's 16 channels to, as the PSP's sceSasCore was,
+# so the CPU mixer in sim_audio.cpp does the mixing and port/vita/audio_out.c plays the result
+# through sceAudioOut. The mixer is where NEON would go if this turns out to cost too much.
 CFLAGS += $(EXTRA_CFLAGS)
 AUDIO_OPT ?= -O3
 LIBS = -lstdc++ -lm -Wl,--start-group libplatinum-probe.a libplatinum-internal.a libnetwork-probe.a libnative-filtered.a -lstdc++ -lpthread -lc -Wl,--end-group
@@ -79,16 +84,11 @@ audio_channel.o: ../native-graphics/libntr/libraries/sim7/src/snd/snd_channel.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 audio_engine.o: sim_audio.cpp
-	$(CXX) $(filter-out -O2 -std=gnu99 -include ../native-probe/pokeplatinum/include/pch/global_pch.h,$(CFLAGS)) $(AUDIO_OPT) -std=gnu++17 -fno-exceptions -fno-rtti -c $< -o $@
+	$(CXX) $(filter-out -O2 -std=gnu99,$(NOPCH)) $(AUDIO_OPT) -std=gnu++17 -fno-exceptions -fno-rtti -c $< -o $@
 
 audio_bank.o: ../native-audio-probe/snd_bank.c
-	$(CC) $(filter-out -include ../native-probe/pokeplatinum/include/pch/global_pch.h,$(CFLAGS)) -include ../native-graphics/libntr/include/pch/nitro_pch.h -c $< -o $@
+	$(CC) $(NOPCH) -include ../native-graphics/libntr/include/pch/nitro_pch.h -c $< -o $@
 
 audio_loader.o: ../native-probe/libntrsystem/libraries/snd/src/sndarc_loader.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-audio_out.o: psp_audio_out.c
-	$(CC) $(CFLAGS) -c $< -o $@
-
-sas_out.o: sas_out.c
-	$(CC) $(CFLAGS) -c $< -o $@

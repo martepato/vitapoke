@@ -13,7 +13,7 @@ extern "C" {
 alignas(16) u8 s_HW_BG_VRAM[0x80000]={},s_HW_DB_BG_VRAM[0x20000]={},s_HW_OBJ_VRAM[0x40000]={},s_HW_DB_OBJ_VRAM[0x20000]={};
 u8 s_HW_BG_PLTT[512]={},s_HW_OBJ_PLTT[512]={},s_HW_DB_BG_PLTT[512]={},s_HW_DB_OBJ_PLTT[512]={};
 u8 s_HW_OAM[1024]={},s_HW_DB_OAM[1024]={};
-extern unsigned char PSPNative_GfxRegisters[4224];
+extern unsigned char VitaNative_GfxRegisters[4224];
 }
 static unsigned __attribute__((aligned(16))) list[8192];
 static u32 __attribute__((aligned(16))) out[2][256*256];
@@ -24,7 +24,7 @@ static void bindNative() {
  memcpy(GPU::OAM,s_HW_OAM,1024);memcpy(GPU::OAM+1024,s_HW_DB_OAM,1024);
  for(int engine=0;engine<2;engine++) {
   GPU2D::Unit &u=engine?b:a;
-  volatile u8 *r=PSPNative_GfxRegisters+engine*0x1000;
+  volatile u8 *r=VitaNative_GfxRegisters+engine*0x1000;
   u.Write32(0,*(volatile u32*)r);
   for(unsigned off=8;off<=0x54;off+=2) {
    if(off==0x28||off==0x2c||off==0x38||off==0x3c){u.Write32(off,*(volatile u32*)(r+off));off+=2;}

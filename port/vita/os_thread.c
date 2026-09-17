@@ -54,7 +54,7 @@ static void Check(int result, const char *what)
 	if (result < 0) {
 		char message[96];
 		snprintf(message, sizeof message, "thread %s failed %08x", what, (unsigned)result);
-		PSPNativeFatal(message);
+		VitaNativeFatal(message);
 	}
 }
 
@@ -85,7 +85,7 @@ static SceUID WakeFlag(const char *what)
 	if (flag < 0) {
 		char message[96];
 		snprintf(message, sizeof message, "thread %s: could not create the wake flag", what);
-		PSPNativeFatal(message);
+		VitaNativeFatal(message);
 	}
 	return flag;
 }
@@ -120,7 +120,7 @@ OSThread *WIN_OS_GetCurrentThread(void)
 		if (record)
 			return record->thread;
 	}
-	PSPNativeFatal("WIN_OS_GetCurrentThread: caller is not a DS thread");
+	VitaNativeFatal("WIN_OS_GetCurrentThread: caller is not a DS thread");
 	return NULL;
 }
 
@@ -150,7 +150,7 @@ void OS_ExitThread(void)
 	/* Give up DS context before leaving: the thread is gone and must not keep the lock. */
 	VitaOS_Release();
 	sceKernelExitThread(0);
-	PSPNativeFatal("OS_ExitThread: returned from sceKernelExitThread");
+	VitaNativeFatal("OS_ExitThread: returned from sceKernelExitThread");
 }
 
 static int ThreadEntry(SceSize args, void *argp)
@@ -175,7 +175,7 @@ void OS_CreateThreadReal(OSThread *thread, void (*entry)(void *), void *arg, voi
 	(void)stack;   /* the DS stack stays data; the Vita kernel owns the real one */
 	OS_InitThread();
 	if (!thread || !entry || priority > 31 || Find(thread))
-		PSPNativeFatal("OS_CreateThread: bad argument or duplicate thread");
+		VitaNativeFatal("OS_CreateThread: bad argument or duplicate thread");
 
 	VitaOS_TableLock();
 	for (int i = 1; i < MAX_THREADS; i++)
@@ -185,7 +185,7 @@ void OS_CreateThreadReal(OSThread *thread, void (*entry)(void *), void *arg, voi
 		}
 	if (!record) {
 		VitaOS_TableUnlock();
-		PSPNativeFatal("OS_CreateThread: no free thread slot");
+		VitaNativeFatal("OS_CreateThread: no free thread slot");
 	}
 
 	memset(thread, 0, sizeof *thread);
@@ -256,13 +256,13 @@ void OS_SleepThread(OSThreadQueue *queue)
 	unsigned depth;
 
 	if (!record)
-		PSPNativeFatal("OS_SleepThread: caller is not a DS thread");
+		VitaNativeFatal("OS_SleepThread: caller is not a DS thread");
 	if (schedulerDepth)
-		PSPNativeFatal("OS_SleepThread: called with the scheduler disabled");
+		VitaNativeFatal("OS_SleepThread: called with the scheduler disabled");
 
 	VitaOS_TableLock();
 	if (thread->queue)
-		PSPNativeFatal("OS_SleepThread: thread is already queued");
+		VitaNativeFatal("OS_SleepThread: thread is already queued");
 	if (queue) {
 		thread->queue = queue;
 		thread->link.prev = queue->tail;
@@ -291,7 +291,7 @@ void OS_SleepThread(OSThreadQueue *queue)
 void OS_SleepThreadDirect(OSThread *thread, OSThreadQueue *queue)
 {
 	if (thread != WIN_OS_GetCurrentThread())
-		PSPNativeFatal("OS_SleepThreadDirect: not the calling thread");
+		VitaNativeFatal("OS_SleepThreadDirect: not the calling thread");
 	OS_SleepThread(queue);
 }
 
@@ -313,7 +313,7 @@ void OS_JoinThread(OSThread *thread)
 	if (!record)
 		return;
 	if (!record->started || thread == WIN_OS_GetCurrentThread())
-		PSPNativeFatal("OS_JoinThread: thread not started, or joining itself");
+		VitaNativeFatal("OS_JoinThread: thread not started, or joining itself");
 
 	/* The thread being joined needs DS context to finish, so the joiner must not hold it. */
 	depth = VitaOS_Release();
@@ -356,7 +356,7 @@ void OS_Sleep(u32 ms)
 	unsigned depth;
 
 	if (schedulerDepth)
-		PSPNativeFatal("OS_Sleep: called with the scheduler disabled");
+		VitaNativeFatal("OS_Sleep: called with the scheduler disabled");
 
 	depth = VitaOS_Release();
 	while (ms) {

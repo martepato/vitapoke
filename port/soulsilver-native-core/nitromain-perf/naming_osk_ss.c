@@ -46,12 +46,12 @@ typedef struct NamingScreenArgs {
 } NamingScreenArgs;
 extern const OverlayManagerTemplate gOverlayTemplate_NamingScreen;
 
-extern void PSPNativeOskBegin(const unsigned short *desc, const unsigned short *intext, int limit);
-extern int PSPNativeOskFinished(void);
-extern int PSPNativeOskAccepted(void);
-extern const unsigned short *PSPNativeOskText(void);
-extern void PSPNativeOskRelease(void);
-extern void PSPNativeMemLog(const char *fmt, ...);
+extern void VitaNativeOskBegin(const unsigned short *desc, const unsigned short *intext, int limit);
+extern int VitaNativeOskFinished(void);
+extern int VitaNativeOskAccepted(void);
+extern const unsigned short *VitaNativeOskText(void);
+extern void VitaNativeOskRelease(void);
+extern void VitaNativeMemLog(const char *fmt, ...);
 
 /* NamingScreenArgs::nameInputFlat[20] is the widest buffer the game hands us. */
 #define OSK_NAME_CAP 19
@@ -143,15 +143,15 @@ static BOOL OskNaming_Init(OverlayManager *ovyMan, int *state)
     }
     intext[n] = 0;
 
-    PSPNativeMemLog("[OSK] naming kind=%d maxLen=%d initial=%d chars", (int)args->kind, app->maxLen, n);
-    PSPNativeOskBegin(desc, intext, app->maxLen);
+    VitaNativeMemLog("[OSK] naming kind=%d maxLen=%d initial=%d chars", (int)args->kind, app->maxLen, n);
+    VitaNativeOskBegin(desc, intext, app->maxLen);
     return TRUE;
 }
 
 static BOOL OskNaming_Main(OverlayManager *ovyMan, int *state)
 {
     (void)ovyMan; (void)state;
-    return PSPNativeOskFinished() ? TRUE : FALSE;
+    return VitaNativeOskFinished() ? TRUE : FALSE;
 }
 
 /* NamingScreen_SetDefaultName without the app struct: a random generic name
@@ -170,10 +170,10 @@ static void UseDefaultName(NamingScreenArgs *args)
         String_Delete(string);
         CopyStringToU16Array(args->nameInputString, args->nameInputFlat, 10);
         DestroyMsgData(msg);
-        PSPNativeMemLog("[OSK] no input; generic name entry %d used", (int)entry);
+        VitaNativeMemLog("[OSK] no input; generic name entry %d used", (int)entry);
     } else {
         args->noInput = TRUE;
-        PSPNativeMemLog("[OSK] no input; noInput for kind %d", (int)args->kind);
+        VitaNativeMemLog("[OSK] no input; noInput for kind %d", (int)args->kind);
     }
 }
 
@@ -191,8 +191,8 @@ static BOOL OskNaming_Exit(OverlayManager *ovyMan, int *state)
     int n = 0;
 
     (void)state;
-    if (PSPNativeOskAccepted()) {
-        const unsigned short *text = PSPNativeOskText();
+    if (VitaNativeOskAccepted()) {
+        const unsigned short *text = VitaNativeOskText();
         int i;
         for (i = 0; text[i] != 0 && n < app->maxLen; i++) {
             u16 cc = UnicodeToCharCode(text[i]);
@@ -207,10 +207,10 @@ static BOOL OskNaming_Exit(OverlayManager *ovyMan, int *state)
     } else {
         CopyU16StringArray(args->nameInputFlat, entry);
         CopyU16ArrayToString(args->nameInputString, entry);
-        PSPNativeMemLog("[OSK] accepted %d chars for naming kind %d", n, (int)args->kind);
+        VitaNativeMemLog("[OSK] accepted %d chars for naming kind %d", n, (int)args->kind);
     }
 
-    PSPNativeOskRelease();
+    VitaNativeOskRelease();
     OverlayManager_FreeData(ovyMan);
     Heap_Destroy(HEAP_ID_NAMING_SCREEN);
     return TRUE;
@@ -224,9 +224,9 @@ extern OverlayManager *__real_OverlayManager_New(const OverlayManagerTemplate *t
 
 OverlayManager *__wrap_OverlayManager_New(const OverlayManagerTemplate *template, void *parentWork, enum HeapID heapID)
 {
-#ifndef PSP_NATIVE_KEEP_DS_NAMING
+#ifndef VITAPOKE_KEEP_DS_NAMING
     if (template == &gOverlayTemplate_NamingScreen) {
-        PSPNativeMemLog("[OSK] substituting PSP keyboard for gOverlayTemplate_NamingScreen");
+        VitaNativeMemLog("[OSK] substituting PSP keyboard for gOverlayTemplate_NamingScreen");
         template = &sOskNamingTemplate;
     }
 #endif

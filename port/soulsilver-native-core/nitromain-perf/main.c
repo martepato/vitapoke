@@ -1,5 +1,5 @@
-#ifndef PSP_NATIVE_PLAY
-#define PSP_NATIVE_PLAY 0
+#ifndef VITAPOKE_PLAY
+#define VITAPOKE_PLAY 0
 #endif
 #include <pspkernel.h>
 #include <psppower.h>
@@ -16,7 +16,7 @@ PSP_MAIN_THREAD_ATTR(PSP_THREAD_ATTR_USER|PSP_THREAD_ATTR_VFPU);
 PSP_HEAP_SIZE_KB(4096);
 extern void InitSystemForTheGame(void);
 extern void InitGraphicMemory(void);
-extern BOOL PSPNativeRomFS_SetPath(const char *path);
+extern BOOL VitaNativeRomFS_SetPath(const char *path);
 extern void WIN_Init_sTexStartAddrTable(void);
 extern void WIN_Init_sTexPlttStartAddrTable(void);
 /* The original assertion handler. GF_ASSERT is a tail call in most compiled
@@ -25,9 +25,9 @@ extern void WIN_Init_sTexPlttStartAddrTable(void);
  * card log on hardware identifies the abort without a debugger. */
 void GF_AssertFail(void){
  extern void NitroMain(void);extern char __executable_start[],_etext[];
- extern void PSPNativeMemLog(const char*,...);PSPNativeMemLog("[FATAL] game assertion ra=%p NitroMain=%p",__builtin_return_address(0),NitroMain);
+ extern void VitaNativeMemLog(const char*,...);VitaNativeMemLog("[FATAL] game assertion ra=%p NitroMain=%p",__builtin_return_address(0),NitroMain);
  unsigned *sp=(unsigned *)__builtin_frame_address(0),lo=(unsigned)(uintptr_t)__executable_start,hi=(unsigned)(uintptr_t)_etext,shown=0;
- for(unsigned i=0;i<128&&shown<8;i++){unsigned v=sp[i];if(v>lo&&v<hi&&!(v&3)){PSPNativeMemLog("[FATAL] stack[%u]=%08x",i,v);shown++;}}
+ for(unsigned i=0;i<128&&shown<8;i++){unsigned v=sp[i];if(v>lo&&v<hi&&!(v&3)){VitaNativeMemLog("[FATAL] stack[%u]=%08x",i,v);shown++;}}
  fflush(stdout);abort();}
 extern BOOL SSNativeValidateHeader(const u8 *,unsigned,const FSArchive *);
 extern const u8 *SSNativeCheckedHeader(void);
@@ -57,16 +57,16 @@ static void VerifyInitialSystems(void){
 static int exitCallback(int a,int b,void*c){sceKernelExitGame();return 0;}
 static int callbackThread(SceSize args,void*argp){int cb=sceKernelCreateCallback("exit",exitCallback,NULL);sceKernelRegisterExitCallback(cb);sceKernelSleepThreadCB();return 0;}
 /* PSP port: our own EBOOT path, so OS_ResetSystem can relaunch the game (platform.c). */
-char gPSPNativeSelfPath[256];
+char gVitaNativeSelfPath[256];
 int main(int argc, char **argv){
- if(argc>0&&argv&&argv[0]){strncpy(gPSPNativeSelfPath,argv[0],sizeof(gPSPNativeSelfPath)-1);}
+ if(argc>0&&argv&&argv[0]){strncpy(gVitaNativeSelfPath,argv[0],sizeof(gVitaNativeSelfPath)-1);}
  {int th=sceKernelCreateThread("cbthread",callbackThread,0x11,0xFA0,0,NULL);if(th>=0)sceKernelStartThread(th,0,NULL);}
  scePowerSetClockFrequency(333,333,166);
- if(!PSPNativeRomFS_SetPath("SoulSilver.nds")){puts("[SS-BOOT] invalid ROM path");return 1;}
- extern BOOL PSPNative_OpenBackup(const char *);
- if(!PSPNative_OpenBackup("SoulSilver.native.sav")){extern void PSPNativeMemLog(const char*,...);PSPNativeMemLog("[FATAL] SoulSilver.native.sav missing or unreadable next to the EBOOT");abort();}
- { extern void PSPNativeMemLog(const char*,...); PSPNativeMemLog("[SS-BOOT] native SoulSilver start (play=%d)", (int)PSP_NATIVE_PLAY); }
-#if !PSP_NATIVE_PLAY
+ if(!VitaNativeRomFS_SetPath("SoulSilver.nds")){puts("[SS-BOOT] invalid ROM path");return 1;}
+ extern BOOL VitaNative_OpenBackup(const char *);
+ if(!VitaNative_OpenBackup("SoulSilver.native.sav")){extern void VitaNativeMemLog(const char*,...);VitaNativeMemLog("[FATAL] SoulSilver.native.sav missing or unreadable next to the EBOOT");abort();}
+ { extern void VitaNativeMemLog(const char*,...); VitaNativeMemLog("[SS-BOOT] native SoulSilver start (play=%d)", (int)VITAPOKE_PLAY); }
+#if !VITAPOKE_PLAY
  /* Diagnostic self-proofs (millions of checks): valuable in PPSSPP, seconds of
   * startup on a real PSP. The play build skips them. */
  extern void SSNativeBrightnessProof(void);SSNativeBrightnessProof();
@@ -76,12 +76,12 @@ int main(int argc, char **argv){
  extern void SSNativeMapMovementProof(void);SSNativeMapMovementProof();
 #endif
  CTRDG_Init();
-#if !PSP_NATIVE_PLAY
+#if !VITAPOKE_PLAY
  extern void SSNativeMenuProof(void);SSNativeMenuProof();
 #endif
- extern void PSPNativeFrameInit(void);PSPNativeFrameInit();
+ extern void VitaNativeFrameInit(void);VitaNativeFrameInit();
  WIN_Init_sTexStartAddrTable();WIN_Init_sTexPlttStartAddrTable();
- extern BOOL PSPNativeOverlay_Init(void);if(!PSPNativeOverlay_Init()){puts("[SS-NITROMAIN] overlay registry initialization failed");abort();}
+ extern BOOL VitaNativeOverlay_Init(void);if(!VitaNativeOverlay_Init()){puts("[SS-NITROMAIN] overlay registry initialization failed");abort();}
  puts("[SS-NITROMAIN] entering actual NitroMain; missing game functions abort visibly");
  extern void NitroMain(void);NitroMain();
  sceKernelExitGame();return 0;

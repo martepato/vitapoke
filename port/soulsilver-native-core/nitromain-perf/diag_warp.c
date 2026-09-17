@@ -12,7 +12,7 @@
 #include "map_object.h"
 #include "task.h"
 
-extern void PSPNativeMemLog(const char *fmt, ...);
+extern void VitaNativeMemLog(const char *fmt, ...);
 extern void __real_PlayerAvatar_UpdateMovement(PlayerAvatar *avatar);
 
 /* Top-level field task: tick 1 queues the script warp as a child task, tick 2 (after the
@@ -25,7 +25,7 @@ static BOOL DiagWarpTask(TaskManager *taskman)
         map = (int)strtol(s, (char **)&s, 10); if (*s == ',') s++;
         x = (int)strtol(s, (char **)&s, 10);   if (*s == ',') s++;
         z = (int)strtol(s, (char **)&s, 10);
-        PSPNativeMemLog("[DIAG] warp to map %d (%d,%d)", map, x, z);
+        VitaNativeMemLog("[DIAG] warp to map %d (%d,%d)", map, x, z);
         printf("[DIAG] warp to map %d (%d,%d)\n", map, x, z);
         state = 1;
         CallTask_ScriptWarp(taskman, (u32)map, -1, x, z, 1);

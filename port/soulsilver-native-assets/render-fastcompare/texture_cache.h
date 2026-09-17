@@ -4,15 +4,15 @@
 
 #include <malloc.h>
 extern "C" u8 s_HW_LCDC_VRAM[0xA4000];
-extern "C" unsigned char PSPNative_GfxRegisters[];
+extern "C" unsigned char VitaNative_GfxRegisters[];
 // Logical DS texture/palette slots can be backed by different physical banks.
 // Compare directly on cache hits; gather only on misses, including wired-OR overlaps.
 static bool TextureRange(unsigned address,unsigned size,bool palette,u8*dst,const u8*compare){
  while(size){unsigned segment=palette?0x4000:0x20000;unsigned slot=address/segment,within=address&(segment-1),n=segment-within;if(n>size)n=size;
  const u8*src[4];unsigned count=0;
- if(!palette){for(unsigned b=0;b<4;b++){unsigned c=PSPNative_GfxRegisters[0x240+b];if((c&0x87)==0x83&&((c>>3)&3)==slot)src[count++]=s_HW_LCDC_VRAM+b*0x20000+within;}}
- else {unsigned e=PSPNative_GfxRegisters[0x244];if((e&0x87)==0x83&&slot<4)src[count++]=s_HW_LCDC_VRAM+0x80000+slot*0x4000+within;
- for(unsigned b=0;b<2;b++){unsigned c=PSPNative_GfxRegisters[0x245+b],ofs=(c>>3)&3;if((c&0x87)==0x83&&((ofs&1)+((ofs&2)<<1))==slot)src[count++]=s_HW_LCDC_VRAM+0x90000+b*0x4000+within;}}
+ if(!palette){for(unsigned b=0;b<4;b++){unsigned c=VitaNative_GfxRegisters[0x240+b];if((c&0x87)==0x83&&((c>>3)&3)==slot)src[count++]=s_HW_LCDC_VRAM+b*0x20000+within;}}
+ else {unsigned e=VitaNative_GfxRegisters[0x244];if((e&0x87)==0x83&&slot<4)src[count++]=s_HW_LCDC_VRAM+0x80000+slot*0x4000+within;
+ for(unsigned b=0;b<2;b++){unsigned c=VitaNative_GfxRegisters[0x245+b],ofs=(c>>3)&3;if((c&0x87)==0x83&&((ofs&1)+((ofs&2)<<1))==slot)src[count++]=s_HW_LCDC_VRAM+0x90000+b*0x4000+within;}}
  if(count==1){if(compare&&!SS_TextureBytesEqual(compare,src[0],n))return false;if(dst)memcpy(dst,src[0],n);}
  else {for(unsigned i=0;i<n;i++){u8 v=0;for(unsigned b=0;b<count;b++)v|=src[b][i];if(compare&&compare[i]!=v)return false;if(dst)dst[i]=v;}}
  if(dst)dst+=n;if(compare)compare+=n;address+=n;size-=n;
@@ -38,24 +38,24 @@ static bool TextureFootprint(unsigned format,unsigned w,unsigned h,unsigned offs
 struct TextureEntry{unsigned offset,pal,format,w,h,color0;u32 *pixels;u8 *snapshot;unsigned texBytes,palBytes;bool queued;unsigned gpuBytes,stride,psm;u32*clut;bool partialAlpha;bool mirS,mirT;unsigned texW,texH;};
 static TextureEntry cache[128];static unsigned cacheSize=0,cacheBytes=0,cacheNext=0;
 static const unsigned kCacheMaxEntries=128,kCacheMaxBytes=2*1024*1024;
-// Perf port from native-stack-render: per-window profile counters (reset by PSPNativeG3TexProfile).
+// Perf port from native-stack-render: per-window profile counters (reset by VitaNativeG3TexProfile).
 static unsigned cacheEvictions=0;
 static unsigned texProfBinds=0,texProfHits=0,texProfMisses=0,texProfCmpBytes=0,texProfEvictions=0;
-extern "C" void PSPNativeG3TexProfile(unsigned*binds,unsigned*hits,unsigned*misses,unsigned*cmpBytes,unsigned*evictions){
+extern "C" void VitaNativeG3TexProfile(unsigned*binds,unsigned*hits,unsigned*misses,unsigned*cmpBytes,unsigned*evictions){
  if(binds)*binds=texProfBinds;if(hits)*hits=texProfHits;if(misses)*misses=texProfMisses;if(cmpBytes)*cmpBytes=texProfCmpBytes;if(evictions)*evictions=texProfEvictions;
  texProfBinds=texProfHits=texProfMisses=texProfCmpBytes=texProfEvictions=0;}
-extern "C" void PSPNativeG3CacheStats(unsigned*entries,unsigned*bytes,unsigned*highBytes,
+extern "C" void VitaNativeG3CacheStats(unsigned*entries,unsigned*bytes,unsigned*highBytes,
                                       unsigned*highEntries,unsigned*retries,unsigned*oversize,unsigned*evictions){
  if(entries)*entries=cacheSize;if(bytes)*bytes=cacheBytes;if(highBytes)*highBytes=0;
  if(highEntries)*highEntries=0;if(retries)*retries=0;if(oversize)*oversize=0;if(evictions)*evictions=cacheEvictions;
 }
-extern "C" void PSPNativeGUTextureFence();
+extern "C" void VitaNativeGUTextureFence();
 // Called only after sceGuSync has completed every queued texture read.
-extern "C" void PSPNativeG3TexturesComplete(){for(unsigned i=0;i<cacheSize;i++)cache[i].queued=false;}
+extern "C" void VitaNativeG3TexturesComplete(){for(unsigned i=0;i<cacheSize;i++)cache[i].queued=false;}
 static void EvictOne(){
  if(!cacheSize)return;
  unsigned i=cacheNext++%cacheSize;
- if(cache[i].queued)PSPNativeGUTextureFence();
+ if(cache[i].queued)VitaNativeGUTextureFence();
  TextureEntry&e=cache[i];
  if(e.queued){printf("[TEXTURE] incomplete eviction fence\n");abort();}
  cacheBytes-=e.gpuBytes+e.texBytes+e.palBytes;free(e.pixels);free(e.snapshot);cacheEvictions++;texProfEvictions++;

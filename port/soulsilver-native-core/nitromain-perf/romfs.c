@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#define PSPNativeRomFS_SetPath SSRaw_PSPNativeRomFS_SetPath
+#define VitaNativeRomFS_SetPath SSRaw_VitaNativeRomFS_SetPath
 #define FS_End SSRaw_FS_End
 #define FS_Init SSRaw_FS_Init
 #define FS_IsAvailable SSRaw_FS_IsAvailable
@@ -97,7 +97,7 @@ static void DropHandle(FSFile*f){RomHandle**p=&handles;while(*p){RomHandle*h=*p;
 
 static u16 U16(const void*p){const u8*b=p;return b[0]|((u16)b[1]<<8);}
 static u32 U32(const void*p){const u8*b=p;return U16(b)|((u32)U16(b+2)<<16);}
-BOOL PSPNativeRomFS_SetPath(const char*path){if(ready||!path||strlen(path)>=sizeof(romPath))return FALSE;strcpy(romPath,path);return TRUE;}
+BOOL VitaNativeRomFS_SetPath(const char*path){if(ready||!path||strlen(path)>=sizeof(romPath))return FALSE;strcpy(romPath,path);return TRUE;}
 void FS_End(void){while(handles){RomHandle*h=handles;handles=h->next;free(h);}if(romStream)fclose(romStream);romStream=NULL;streamPos=0;free(tables);tables=fat=fnt=NULL;ready=FALSE;
 #ifdef OPT_ROM_CACHE
  for(int i=0;i<ROM_CACHE_BLOCKS;i++)romCacheTag[i]=CACHE_EMPTY;
@@ -218,8 +218,8 @@ BOOL CARD_IsPulledOut(void){struct stat st;return stat(romPath,&st)!=0||st.st_si
 
 extern void SSRomLock(void);
 extern void SSRomUnlock(void);
-#undef PSPNativeRomFS_SetPath
-BOOL PSPNativeRomFS_SetPath(const char*path){SSRomLock();BOOL result=SSRaw_PSPNativeRomFS_SetPath(path);SSRomUnlock();return result;}
+#undef VitaNativeRomFS_SetPath
+BOOL VitaNativeRomFS_SetPath(const char*path){SSRomLock();BOOL result=SSRaw_VitaNativeRomFS_SetPath(path);SSRomUnlock();return result;}
 #undef FS_End
 void FS_End(void){SSRomLock();SSRaw_FS_End();SSRomUnlock();}
 #undef FS_Init

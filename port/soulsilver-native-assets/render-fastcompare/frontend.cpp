@@ -366,8 +366,8 @@ static xyz_s_t prevXYZ;
 #include <cstdlib>
 #include <malloc.h>
 #include <pspkernel.h>
-#ifndef PSP_NATIVE_LIST_CACHE
-#define PSP_NATIVE_LIST_CACHE 1
+#ifndef VITAPOKE_LIST_CACHE
+#define VITAPOKE_LIST_CACHE 1
 #endif
 struct ListEntry{const void*ptr;unsigned size;u8*src;GuVertex*verts;unsigned nverts,polys,lastUse,skipUntil,deps,impureSize,impureSig;u8 mismatches,impure;G3GeomEntryState entry;G3SlotState exit;xyz_s_t prevIn,prevOut;};
 /* signature of a list's first words: an 'uncacheable' mark is dropped when the bytes at that address change */
@@ -381,7 +381,7 @@ static unsigned listHits,listRecords,listHitVerts,listVolatile,listBroken,listMi
 enum{kContentSlots=1024,kContentProbe=32,kContentMaxBytes=1024*1024};
 static ListEntry contentTable[kContentSlots];static unsigned contentBytes,contentHits,contentStores;
 static inline unsigned ContentHash(const void*p,unsigned size){const unsigned*w=(const unsigned*)p;unsigned h=2166136261u^size;for(unsigned i=0,n=size>>2;i<n;i++)h=(h^w[i])*16777619u;return h?h:1;}
-extern "C" void PSPNativeG3ListCacheStats(unsigned*hits,unsigned*records,unsigned*entries,unsigned*bytes,unsigned*hitVerts,unsigned*highBytes,unsigned*vol){
+extern "C" void VitaNativeG3ListCacheStats(unsigned*hits,unsigned*records,unsigned*entries,unsigned*bytes,unsigned*hitVerts,unsigned*highBytes,unsigned*vol){
  if(hits)*hits=listHits;if(records)*records=listRecords;if(entries)*entries=listEntries;if(bytes)*bytes=listBytes;if(hitVerts)*hitVerts=listHitVerts;if(highBytes)*highBytes=listHighBytes;if(vol)*vol=listVolatile|(listBroken<<16);
  listHits=listRecords=listHitVerts=0;}
 static inline unsigned ListHash(const void*p){uintptr_t v=(uintptr_t)p;return (unsigned)((v>>2)*2654435761u)>>23;}   /* 9 bits */
@@ -406,9 +406,9 @@ extern "C" void G3SIM_VtxAssemble(s16,s16,s16);
 
 #include <pspkernel.h>
 unsigned g3ProfUs=0,g3ProfCalls=0;
-extern "C" void PSPNativeG3GetProfile(unsigned*us,unsigned*calls){if(us)*us=g3ProfUs;if(calls)*calls=g3ProfCalls;g3ProfUs=0;g3ProfCalls=0;}
+extern "C" void VitaNativeG3GetProfile(unsigned*us,unsigned*calls){if(us)*us=g3ProfUs;if(calls)*calls=g3ProfCalls;g3ProfUs=0;g3ProfCalls=0;}
 
-#ifdef PSP_NATIVE_G3_STATS
+#ifdef VITAPOKE_G3_STATS
 /* Diagnostic only (never in a release build): per-frame command histogram and display-list
    repetition statistics, printed every 30 SWAPBUFFERS. */
 #include <cstdio>
@@ -434,7 +434,7 @@ static void G3StatsDump(const void*ptr,unsigned size,unsigned hash){
  emit();printf("%s\n",line);
 }
 static void G3StatsList(const void*ptr,unsigned size){
-#ifndef PSP_NATIVE_G3_STATS_LISTS
+#ifndef VITAPOKE_G3_STATS_LISTS
  g3StatLists++;g3StatBytes+=size;return;
 #endif
  unsigned h=2166136261u;const unsigned*w=(const unsigned*)ptr;for(unsigned i=0;i<size/4;i++)h=(h^w[i])*16777619u;
@@ -476,7 +476,7 @@ static unsigned profileDepth;
 static unsigned profOuterN;
 /* Timer syscalls are not free on hardware: sample one outer call in eight and scale. */
 void SIM_HandleG3Command(draw_msg_t *msg){bool outer=profileDepth++==0;if(outer)G3STAT_IMM(msg->type);bool sample=outer&&((++profOuterN&7)==0);unsigned t=sample?sceKernelGetSystemTimeLow():0;SIM_HandleG3CommandImpl(msg);--profileDepth;if(sample){unsigned dt=(sceKernelGetSystemTimeLow()-t)*8;g3ProfUs+=dt;
-#ifdef PSP_NATIVE_G3_STATS
+#ifdef VITAPOKE_G3_STATS
  if(msg->type!=DRAW_CMD_G3_CMD_LIST){g3CatUs[3]+=dt;g3CatN[3]++;}
 #endif
 }g3ProfCalls++;}
@@ -613,7 +613,7 @@ static void SIM_HandleG3CommandImpl(draw_msg_t *msg) {
     break;
   case DRAW_CMD_G3_SWAPBUFFERS: {
     G3StatsSwap();listFrame++;
-#ifdef PSP_NATIVE_LIST_TRACE
+#ifdef VITAPOKE_LIST_TRACE
     printf("[LT-FRAME] listFrame=%u\n",listFrame);
 #endif
     u8 depthBufferMode = (msg->data.numU32 & 2) >> 1;
@@ -651,10 +651,10 @@ static const unsigned long long kPureOps=(1ULL<<DRAW_CMD_G3_NOP)|(1ULL<<DRAW_CMD
    pay the content hash/probe, entry-state capture, record begin/end and impure-slot marking.
    OPT_FASTDECODE: copy the payload of frequent setup ops straight into the message fields the
    handler reads, instead of widening every parameter to 64 bits and running ConvertMsgParams.
-   PSP_NATIVE_DECODE_ORACLE: test build; every fast-decoded op is also run through the generic
+   VITAPOKE_DECODE_ORACLE: test build; every fast-decoded op is also run through the generic
    decoder on a copy of the same message and the handler-visible bytes and advance are compared,
    and the prescan result is compared with the loop's own purity result. */
-#if defined(OPT_PRESCAN)||defined(OPT_FASTDECODE)||defined(PSP_NATIVE_DECODE_ORACLE)
+#if defined(OPT_PRESCAN)||defined(OPT_FASTDECODE)||defined(VITAPOKE_DECODE_ORACLE)
 struct G3OpInfo{u8 type,size,pure;};
 static G3OpInfo g3OpInfo[256];static bool g3OpInfoReady;
 static void G3OpInfoBuild(){
@@ -684,7 +684,7 @@ static inline unsigned GenericDecode(draw_msg_t*m,void*paramPtr){
     default:break;}
     paramPtr+=paramSize;}
   return (unsigned)numParams*paramSize;}
-#ifdef PSP_NATIVE_DECODE_ORACLE
+#ifdef VITAPOKE_DECODE_ORACLE
 static unsigned oracleChecked,oracleMismatch,oraclePureChecked,oraclePureMismatch;
 static void OracleOp(const draw_msg_t*before,const draw_msg_t*fast,void*paramPtr,unsigned fastSize,unsigned fieldBytes){
   draw_msg_t g;memcpy(&g,before,sizeof g);unsigned gsz=GenericDecode(&g,paramPtr);ConvertMsgParams(&g);
@@ -693,25 +693,25 @@ static void OracleOp(const draw_msg_t*before,const draw_msg_t*fast,void*paramPtr
   if(!(oracleChecked%200000))printf("[DECODE-ORACLE] checked=%u mismatches=%u pure_checked=%u pure_mismatches=%u\n",oracleChecked,oracleMismatch,oraclePureChecked,oraclePureMismatch);}
 #endif
 static void ProcessCommandList(draw_msg_t *msg){
-#if defined(OPT_PRESCAN)||defined(OPT_FASTDECODE)||defined(PSP_NATIVE_DECODE_ORACLE)
+#if defined(OPT_PRESCAN)||defined(OPT_FASTDECODE)||defined(VITAPOKE_DECODE_ORACLE)
     if(!g3OpInfoReady)G3OpInfoBuild();
 #endif
     const void*listPtr=msg->data.ptr;unsigned listSize=msg->size;G3CAT_BEGIN();
-#ifdef PSP_NATIVE_LIST_TRACE
+#ifdef VITAPOKE_LIST_TRACE
     bool lt=listFrame>=700&&listFrame<=900;unsigned ltPolys0=s_numG3DrawsThisFrame;extern unsigned g3RecCount;if(lt)g3RecCount=0;
 #endif
     bool rec=false,pure=true,prePure=true;(void)prePure;ListEntry*le=nullptr;G3GeomEntryState entryState;unsigned contentH=0;bool contentTry=false;xyz_s_t prevIn=prevXYZ;unsigned polys0=s_numG3DrawsThisFrame,nonRaw0=g3NonRawSubmits;
-#if PSP_NATIVE_LIST_CACHE
+#if VITAPOKE_LIST_CACHE
     le=ListFind(listPtr);
     if(le&&le->impure&&(le->impureSize!=listSize||le->impureSig!=ListSig(listPtr,listSize)))le->impure=0;
-#ifdef PSP_NATIVE_G3_STATS
+#ifdef VITAPOKE_G3_STATS
     if(le&&!le->src&&!le->impure)listMissNoSrc++;
 #endif
-#ifdef PSP_NATIVE_LIST_CACHE_VERIFY
+#ifdef VITAPOKE_LIST_CACHE_VERIFY
     ListEntry*verify=nullptr;G3SlotState verifyEntrySlots;G3SIM_CaptureSlots(&verifyEntrySlots);
 #endif
     if(le&&le->src){
-#ifdef PSP_NATIVE_G3_STATS
+#ifdef VITAPOKE_G3_STATS
       unsigned h0=sceKernelGetSystemTimeLow();bool bytesSame=le->size==listSize&&G3FastEqual(le->src,listPtr,listSize);unsigned h1=sceKernelGetSystemTimeLow();g3HitUs[0]+=h1-h0;
       bool stateSame=bytesSame&&(!(le->deps&G3DEP_PREV)||(prevXYZ.x==le->prevIn.x&&prevXYZ.y==le->prevIn.y&&prevXYZ.z==le->prevIn.z))&&G3SIM_EntryStateMatches(&le->entry,le->deps);unsigned h2=sceKernelGetSystemTimeLow();g3HitUs[1]+=h2-h1;
       if(!bytesSame)listMissBytes++;else if(!stateSame)listMissState++;
@@ -719,19 +719,19 @@ static void ProcessCommandList(draw_msg_t *msg){
 #else
       if(le->size==listSize&&G3FastEqual(le->src,listPtr,listSize)&&(!(le->deps&G3DEP_PREV)||(prevXYZ.x==le->prevIn.x&&prevXYZ.y==le->prevIn.y&&prevXYZ.z==le->prevIn.z))&&G3SIM_EntryStateMatches(&le->entry,le->deps)){
 #endif
-#ifdef PSP_NATIVE_LIST_CACHE_VERIFY
+#ifdef VITAPOKE_LIST_CACHE_VERIFY
         verify=le;goto record_anyway;   /* oracle: decode normally, then compare with the entry */
 #endif
         if(le->nverts){G3SIM_ReplayRawBegin();G3ListDrawDirect(le->verts,le->nverts);}
-#ifdef PSP_NATIVE_G3_STATS
+#ifdef VITAPOKE_G3_STATS
         unsigned h3=sceKernelGetSystemTimeLow();g3HitUs[2]+=h3-h2;
 #endif
         G3SIM_RestoreSlots(&le->exit);prevXYZ=le->prevOut;s_numG3DrawsThisFrame+=le->polys;
-#ifdef PSP_NATIVE_G3_STATS
+#ifdef VITAPOKE_G3_STATS
         g3HitUs[3]+=sceKernelGetSystemTimeLow()-h3;
 #endif
         le->lastUse=listFrame;le->mismatches=0;listHits++;listHitVerts+=le->nverts;G3StatsList(listPtr,listSize);G3CAT_END(0);
-#ifdef PSP_NATIVE_LIST_TRACE
+#ifdef VITAPOKE_LIST_TRACE
         if(lt)printf("[LT] f=%u ptr=%p size=%u hit=1 n=%u polys=%u\n",listFrame,listPtr,listSize,le->nverts,le->polys);
 #endif
         return;
@@ -747,7 +747,7 @@ static void ProcessCommandList(draw_msg_t *msg){
     contentTry=prePure&&G3SIM_ReplayEligible()&&listSize<=kListMaxOne&&listSize>=8&&!(le&&le->impure);
     if(contentTry){contentH=ContentHash(listPtr,listSize);ListEntry*ce=ContentFind(listSize,contentH);
       if(ce&&G3FastEqual(ce->src,listPtr,listSize)&&(!(ce->deps&G3DEP_PREV)||(prevXYZ.x==ce->prevIn.x&&prevXYZ.y==ce->prevIn.y&&prevXYZ.z==ce->prevIn.z))&&G3SIM_EntryStateMatches(&ce->entry,ce->deps)){
-#ifdef PSP_NATIVE_LIST_CACHE_VERIFY
+#ifdef VITAPOKE_LIST_CACHE_VERIFY
         verify=ce;goto record_anyway;
 #endif
         if(ce->nverts){G3SIM_ReplayRawBegin();G3ListDrawDirect(ce->verts,ce->nverts);}
@@ -757,7 +757,7 @@ static void ProcessCommandList(draw_msg_t *msg){
       }
     }
     rec=prePure&&G3SIM_ReplayEligible()&&listSize<=kListMaxOne&&!(le&&le->impure);
-#ifdef PSP_NATIVE_LIST_CACHE_VERIFY
+#ifdef VITAPOKE_LIST_CACHE_VERIFY
     record_anyway: if(verify)rec=true;
 #endif
     if(rec){G3SIM_CaptureEntryState(&entryState,~0u);G3ListRecordBegin();}
@@ -841,7 +841,7 @@ tempMsg.data.numU32=*(u32*)paramPtr;G3SIM_SpecEmi(tempMsg.data.numU32);paramPtr+
             tempMsg.data.xyz=prevXYZ;G3SIM_VtxAssemble(prevXYZ.x,prevXYZ.y,prevXYZ.z);g3ProfCalls+=2;continue;}
           case DRAW_CMD_G3_NOP:continue;
 #ifdef OPT_FASTDECODE
-#ifdef PSP_NATIVE_DECODE_ORACLE
+#ifdef VITAPOKE_DECODE_ORACLE
 #define ORACLE_PRE draw_msg_t oracleBefore;memcpy(&oracleBefore,&tempMsg,sizeof tempMsg);
 #define ORACLE_POST(sz,fb) OracleOp(&oracleBefore,&tempMsg,paramPtr,sz,fb);
 #else
@@ -921,7 +921,7 @@ tempMsg.data.numU32=*(u32*)paramPtr;G3SIM_SpecEmi(tempMsg.data.numU32);paramPtr+
           }
 
           ConvertMsgParams(&tempMsg);
-#if defined(PSP_NATIVE_G3_STATS)&&!defined(PSP_NATIVE_G3_STATS_NOOPTIME)
+#if defined(VITAPOKE_G3_STATS)&&!defined(VITAPOKE_G3_STATS_NOOPTIME)
           {unsigned ot=sceKernelGetSystemTimeLow();SIM_HandleG3Command(&tempMsg);g3OpUs[tempMsg.type&63]+=sceKernelGetSystemTimeLow()-ot;g3OpN[tempMsg.type&63]++;}
 #else
           SIM_HandleG3Command(&tempMsg);
@@ -930,14 +930,14 @@ tempMsg.data.numU32=*(u32*)paramPtr;G3SIM_SpecEmi(tempMsg.data.numU32);paramPtr+
         cmdBlockPtr = static_cast<G3SIM_CommandBlock_t *>(paramPtr);
       }
     }
-#ifdef PSP_NATIVE_DECODE_ORACLE
+#ifdef VITAPOKE_DECODE_ORACLE
     oraclePureChecked++;if(ListAllPure(listPtr,listSize)!=pure){if(oraclePureMismatch++<20)printf("[DECODE-ORACLE] PURE MISMATCH size=%u\n",listSize);}
 #endif
-#ifdef PSP_NATIVE_LIST_TRACE
+#ifdef VITAPOKE_LIST_TRACE
     if(lt)printf("[LT] f=%u ptr=%p size=%u hit=0 n=%u polys=%u rec=%d pure=%d deps=%u seen=%u impure=%d skip=%d\n",listFrame,listPtr,listSize,g3RecCount,s_numG3DrawsThisFrame-ltPolys0,(int)rec,(int)pure,deps,seen,le?(int)le->impure:-1,le?(int)(le->skipUntil>listFrame):-1);
 #endif
     G3CAT_END(rec?1:2);
-#if PSP_NATIVE_LIST_CACHE
+#if VITAPOKE_LIST_CACHE
     if(rec){
       unsigned n=0;const GuVertex*v=nullptr;int intact=G3ListRecordEnd(&n,&v);
       if(!intact)listBroken++;
@@ -946,7 +946,7 @@ tempMsg.data.numU32=*(u32*)paramPtr;G3SIM_SpecEmi(tempMsg.data.numU32);paramPtr+
          from a previous list depends on the entry slots and is left to the decoder). */
       bool ok=pure&&g3NonRawSubmits==nonRaw0&&intact&&(seen&4)&&!(deps&G3DEP_SLOTS);
       bool uncacheable=!pure||!(seen&4)||(deps&G3DEP_SLOTS);
-#ifdef PSP_NATIVE_LIST_CACHE_VERIFY
+#ifdef VITAPOKE_LIST_CACHE_VERIFY
       if(verify){
         static unsigned reported;G3SlotState ex;G3SIM_CaptureSlots(&ex);unsigned polys=s_numG3DrawsThisFrame-polys0;
         /* generations are relative; oob/zf are only meaningful once finished/zValid; slots the
@@ -983,7 +983,7 @@ tempMsg.data.numU32=*(u32*)paramPtr;G3SIM_SpecEmi(tempMsg.data.numU32);paramPtr+
     }
 #endif
 }
-extern "C" void PSPNativeG3CommandsBorrowed(const void*source,unsigned bytes){
+extern "C" void VitaNativeG3CommandsBorrowed(const void*source,unsigned bytes){
  draw_msg_t msg;msg.type=DRAW_CMD_G3_CMD_LIST;msg.size=bytes;msg.data.ptr=const_cast<void*>(source);
  bool outer=profileDepth++==0;bool sample=outer&&((++profOuterN&7)==0);unsigned t=sample?sceKernelGetSystemTimeLow():0;
  ProcessCommandList(&msg);--profileDepth;

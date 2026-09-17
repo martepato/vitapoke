@@ -13,7 +13,6 @@ dist/
 eboot.bin
 param.sfo
 *.prx
-!port/**/*linkfile.prx
 __pycache__/
 .DS_Store
 _old/

@@ -12,65 +12,18 @@
 # toolchain this cannot be pinned, and the version actually used is printed instead.
 #
 #   tests/vita/vita3k.sh              download Vita3K if needed, build, run, report
-#   VITAPOKE_VITA3K=/path/to/Vita3K   use an emulator you already have
-#   VITAPOKE_V3K_LIBS=/path:/path     extra library directories for the emulator
 #
-# Needs a display or Xvfb, and an OpenGL driver: llvmpipe is fine, since nothing here draws. The
-# downloaded AppImage does not bundle libOpenGL/libEGL -- it expects them from the system, with the GL
-# driver -- so on a machine without them, install libopengl0 and libegl1 (Debian/Ubuntu names) or point
-# VITAPOKE_V3K_LIBS at a directory holding them.
+# Bringing the emulator up unattended is tests/vita/emulator.sh, which this shares with
+# tests/vita/boot.sh; its header has the requirements and the environment variables.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 source "$ROOT/scripts/common.sh"
+source "$ROOT/tests/vita/emulator.sh"
 export PATH="$VITASDK/bin:$PATH"
 
 TITLE_ID=VPOK00003
-WORK="$ROOT/.work/vita3k"
-V3K="$CACHE/vita3k"
 
 [ -x "$VITASDK/bin/arm-vita-eabi-gcc" ] || die "VitaSDK not installed. Run: ./build.sh setup"
-
-# ---------------------------------------------------------------- the emulator
-#
-# Downloading and building happen as whoever invoked this, so the proxy and toolchain configuration of
-# that account apply. Only the emulator itself runs as somebody else, and only when necessary: Vita3K
-# refuses to run as root, because it would leave root-owned files in the user's own directories.
-RUNAS=""
-if [ "$(id -u)" = 0 ]; then
-  RUNAS=$(getent passwd | awk -F: '$3>=1000 && $3<65534 {print $1; exit}')
-  [ -n "$RUNAS" ] || die "Vita3K will not run as root and this system has no unprivileged account to drop to. Run this as a normal user."
-  command -v setpriv >/dev/null || die "Vita3K will not run as root and setpriv is not available to drop privileges. Run this as a normal user."
-fi
-
-# The emulator keeps its configuration and virtual drive under HOME; give it one inside .work so a
-# run never touches the invoking account's real Vita3K installation.
-export HOME="$WORK/home"
-mkdir -p "$WORK" "$HOME"
-
-if [ -n "${VITAPOKE_VITA3K:-}" ]; then
-  EMU="$VITAPOKE_VITA3K"
-  [ -x "$EMU" ] || die "VITAPOKE_VITA3K is not executable: $EMU"
-else
-  EMU="$V3K/squashfs-root/usr/bin/Vita3K"
-  if [ ! -x "$EMU" ]; then
-    log "Downloading Vita3K (about 65 MB, one time)"
-    mkdir -p "$V3K"
-    need curl "Install curl."
-    curl -fL --progress-bar -o "$V3K/Vita3K.AppImage" \
-      "https://github.com/Vita3K/Vita3K/releases/download/continuous/Vita3K-x86_64.AppImage" ||
-      die "could not download Vita3K"
-    chmod +x "$V3K/Vita3K.AppImage"
-    ( cd "$V3K" && ./Vita3K.AppImage --appimage-extract >/dev/null ) ||
-      die "could not extract the Vita3K AppImage"
-    # Vita3K looks for its builtin shaders and data beside the binary; the AppImage puts them
-    # elsewhere, so the zip build's copies are fetched alongside.
-    curl -fL -s -o "$V3K/ubuntu-latest.zip" \
-      "https://github.com/Vita3K/Vita3K/releases/download/continuous/ubuntu-latest.zip" ||
-      die "could not download the Vita3K data files"
-    ( cd "$V3K" && unzip -o -q ubuntu-latest.zip shaders-builtin/* 'data/*' &&
-      cp -r shaders-builtin data "$V3K/squashfs-root/usr/bin/" )
-  fi
-fi
 
 # ---------------------------------------------------------------- build the test
 log "Building the runtime test"
@@ -102,70 +55,11 @@ PLATFORM=("$ROOT/port/vita/os_core.c" "$ROOT/port/vita/os_alarm.c" "$ROOT/port/v
 
 # ---------------------------------------------------------------- install and run
 #
-# The VPK is unpacked straight into the emulator's virtual drive rather than handed to Vita3K to
-# install, because the install path goes through a dialog.
-PREF="$HOME/.local/share/Vita3K/Vita3K"
-APP="$PREF/ux0/app/$TITLE_ID"
+# Everything the emulator needs to be persuaded of is in tests/vita/emulator.sh.
+vita3k_prepare
+vita3k_install "$TITLE_ID" "$BUILD/eboot.bin" "$BUILD/param.sfo"
 RESULT="$PREF/ux0/data/vitapoke-vita3k.txt"
-rm -rf "$APP"; mkdir -p "$APP/sce_sys" "$PREF/ux0/data"
-cp "$BUILD/eboot.bin" "$APP/eboot.bin"
-cp "$BUILD/param.sfo" "$APP/sce_sys/param.sfo"
 rm -f "$RESULT"
-
-# Vita3K's own defaults stop an unattended run: a welcome dialog, a missing-firmware warning and an
-# update check all wait for a click, and the default renderer is Vulkan, which a software driver does
-# not provide. Nothing here draws, so OpenGL on llvmpipe is enough.
-#
-# The config has to be one Vita3K wrote: it rejects a file that is missing keys it has no default for
-# (the keyboard bindings, for one), so a handwritten minimal file will not load. The first run below
-# exists only to produce it -- with no title to run, so it cannot fail on an app that is not installed
-# yet -- and is expected to sit in its window until the timeout.
-CONFIG="$HOME/.config/Vita3K/config.yml"
-EMU_LIBS="$V3K/squashfs-root/usr/lib${VITAPOKE_V3K_LIBS:+:$VITAPOKE_V3K_LIBS}"
-# Name what is missing rather than letting the loader fail mid-run with a bare message.
-MISSING=$(LD_LIBRARY_PATH="$EMU_LIBS" ldd "$EMU" 2>/dev/null | awk '/not found/{print $1}' | sort -u | tr '\n' ' ')
-[ -z "$MISSING" ] || die "the emulator is missing shared libraries: $MISSING
-Install them (on Debian/Ubuntu libOpenGL.so.0 is in libopengl0 and libEGL.so.1 is in libegl1), or set
-VITAPOKE_V3K_LIBS to a directory that has them."
-
-# emu_run SECONDS [ARG...] : run the emulator with the given arguments for at most SECONDS, as the
-# unprivileged account when there is one.
-#
-# The emulator does not quit on SIGTERM, so `timeout` alone waits for it forever; -k follows up with
-# SIGKILL. Everything else here is the emulator being a desktop application: it needs a display, and it
-# returns to its own window when a title exits rather than terminating.
-emu_run() {
-  local seconds=$1; shift
-  local cmd=(timeout -k 10 "$seconds" "$EMU" "$@")
-  if [ -z "${DISPLAY:-}" ]; then
-    cmd=(xvfb-run -a -s "-screen 0 960x544x24" "${cmd[@]}")
-  fi
-  if [ -n "$RUNAS" ]; then
-    chown -R "$RUNAS" "$WORK" "$V3K"
-    cmd=(setpriv --reuid="$RUNAS" --regid="$RUNAS" --init-groups
-         env "HOME=$HOME" "SDL_AUDIODRIVER=dummy" "LD_LIBRARY_PATH=$EMU_LIBS" "${cmd[@]}")
-  fi
-  ( cd "$(dirname "$EMU")" && SDL_AUDIODRIVER=dummy LD_LIBRARY_PATH="$EMU_LIBS" "${cmd[@]}" ) || true
-}
-
-if [ -z "${DISPLAY:-}" ]; then
-  command -v xvfb-run >/dev/null || die "no DISPLAY and no xvfb-run: Vita3K needs one or the other."
-fi
-
-if [ ! -f "$CONFIG" ]; then
-  log "Letting Vita3K write its default configuration"
-  emu_run 45 -l 4 > "$WORK/config-run.log" 2>&1
-fi
-[ -f "$CONFIG" ] || {
-  grep -vE 'qt\.|pipewire|PulseAudio' "$WORK/config-run.log" 2>/dev/null | tail -15 >&2
-  die "Vita3K did not write a configuration at $CONFIG"
-}
-sed -i -e 's/^show-welcome: true/show-welcome: false/' \
-       -e 's/^warn-missing-firmware: true/warn-missing-firmware: false/' \
-       -e 's/^check-for-updates-mode: 1/check-for-updates-mode: 0/' \
-       -e 's/^backend-renderer: Vulkan/backend-renderer: OpenGL/' \
-       -e 's/^discord-rich-presence: true/discord-rich-presence: false/' \
-       -e "s|^pref-path: .*|pref-path: $PREF|" "$CONFIG"
 
 log "Running the checks in Vita3K"
 # The title writes its report and exits, but the emulator then goes back to its window, so waiting for

@@ -38,4 +38,4 @@ extern "C" void G3SIM_DrawArray() {
 extern "C" void G3SIM_DrawCleanUp() {count=0;}
 extern "C" void G3SIM_FlushArray() {if(count)G3SIM_DrawArray();count=0;}
 
-extern "C" void PSPNativeG3Release(){for(unsigned i=0;i<cacheSize;i++){free(cache[i].pixels);free(cache[i].snapshot);}cacheSize=cacheBytes=0;count=0;}
+extern "C" void VitaNativeG3Release(){for(unsigned i=0;i<cacheSize;i++){free(cache[i].pixels);free(cache[i].snapshot);}cacheSize=cacheBytes=0;count=0;}

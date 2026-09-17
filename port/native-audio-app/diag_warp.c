@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include "field_task.h"
 
-extern void PSPNativeMemLog(const char *fmt, ...);
+extern void VitaNativeMemLog(const char *fmt, ...);
 extern BOOL __real_FieldTask_Run(FieldSystem *fieldSystem);
 extern void FieldTask_StartMapChangeFull(FieldTask *task, int mapHeaderID, int warpId, int x, int z, int dir);
 
@@ -23,7 +23,7 @@ static BOOL DiagWarpTask(FieldTask *task)
         map = (int)strtol(s, (char **)&s, 10); if (*s == ',') s++;
         x = (int)strtol(s, (char **)&s, 10);   if (*s == ',') s++;
         z = (int)strtol(s, (char **)&s, 10);   if (*s == ',') { s++; dir = (int)strtol(s, (char **)&s, 10); }
-        PSPNativeMemLog("[DIAG] warp to map %d (%d,%d) dir %d", map, x, z, dir);
+        VitaNativeMemLog("[DIAG] warp to map %d (%d,%d) dir %d", map, x, z, dir);
         printf("[DIAG] warp to map %d (%d,%d) dir %d\n", map, x, z, dir);
         state = 1;
         FieldTask_StartMapChangeFull(task, map, -1, x, z, dir);

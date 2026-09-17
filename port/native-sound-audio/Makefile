@@ -3,7 +3,7 @@ OBJS = audio_bank.o audio_loader.o audio_backend.o audio_seq.o audio_exchannel.o
 INCDIR = ../native-audio-probe/include ../native-graphics/libntr/libraries/sim/include ../native-graphics/libntr/libraries/mi/src ../native-backup-probe/include include ../native-probe/backing/include ../native-graphics/libntr/libraries/gx/include ../native-graphics/alias-proof/include ../native-probe/libntrdwc/include ../native-probe/libntrsystem/include ../native-probe/generated ../native-probe/pokeplatinum/include ../native-graphics/libntr/include
 CFLAGS = -D_NITRO -DPM_KEEP_ASSERTS -DPOKEPLATINUM_GENERATED_ENUM -O2 @TARGETCC@ -std=gnu99 -DSDL_MAIN_HANDLED -DSDK_PORT -DSDK_X86 -DSDK_TS -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM -include ../native-probe/pokeplatinum/include/pch/global_pch.h -ffunction-sections -fdata-sections
 # Sound plays through the PSP sceSasCore voice mixer (sas_out.c); the CPU mixer is not used.
-CFLAGS += -DPSP_NATIVE_SAS
+CFLAGS += -DVITAPOKE_SAS
 CFLAGS += $(EXTRA_CFLAGS)
 LIBS = -lstdc++ -lm -Wl,--start-group libplatinum-probe.a libplatinum-internal.a libnetwork-probe.a libnative-filtered.a -lstdc++ -lpthread -lc -Wl,--end-group
 LDFLAGS =  -Wl,-Map=link.map -Wl,--gc-sections

@@ -4,7 +4,7 @@ base=Path(__file__).resolve().parent
 root=base.parent/'soulsilver-research/pokeheartgold-slop'; shim=base/'include'
 inc=[shim,base/'game-include',base/'game-include/library',base/'src',root/'files',base.parent/'native-probe/generated',base.parent/'native-probe/libntrsystem/include',base.parent/'native-graphics/libntr/include']
 (base/'objects').mkdir(exist_ok=True)
-cmd=['@TOOLBIN@gcc','-O2','-include',str(shim/'game-pack4.h'),'-Wno-incompatible-pointer-types','-DNONMATCHING','-Wno-implicit-function-declaration','-Wno-int-conversion',*'@TARGETCC@'.split(),'-std=gnu99','-include',str(shim/'compat.h'),'-DPM_KEEP_ASSERTS','-DPSP_NATIVE_OFFLINE','-DSOULSILVER','-DENGLISH','-DSDK_PORT','-DSDK_X86','-DSDK_TS','-DSDK_4M','-DSDK_FINALROM','-DNNS_FINALROM','-D@SDKBUILD@','-ffunction-sections','-fdata-sections']+['-I'+str(p) for p in inc]
+cmd=['@TOOLBIN@gcc','-O2','-include',str(shim/'game-pack4.h'),'-Wno-incompatible-pointer-types','-DNONMATCHING','-Wno-implicit-function-declaration','-Wno-int-conversion',*'@TARGETCC@'.split(),'-std=gnu99','-include',str(shim/'compat.h'),'-DPM_KEEP_ASSERTS','-DVITAPOKE_OFFLINE','-DSOULSILVER','-DENGLISH','-DSDK_PORT','-DSDK_X86','-DSDK_TS','-DSDK_4M','-DSDK_FINALROM','-DNNS_FINALROM','-D@SDKBUILD@','-ffunction-sections','-fdata-sections']+['-I'+str(p) for p in inc]
 def run(p):
  name=str(p.relative_to(base/'src'))[:-2].replace('/','__')
  (base/'objects'/f'{name}.o').unlink(missing_ok=True)

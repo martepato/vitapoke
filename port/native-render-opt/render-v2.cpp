@@ -19,10 +19,10 @@ static bool initialized=false,openFrame=false;static unsigned frames=0,lastDraw=
 static unsigned inputKeys=0,oldKeys=0;static int mode=0,oldMode=0,down=0,oldDown=0,x=128,y=96,oldX=128,oldY=96;
 static unsigned bindUs=0,drawUs=0,convertUs=0;
 static unsigned displayOffset=0,lastReadbackUs=0,last2DUs=0;
-extern "C" void PSPNativeG3Release();
-extern "C" unsigned char PSPNative_GfxRegisters[];
-static unsigned reg16(unsigned off){return *(volatile u16*)(PSPNative_GfxRegisters+off);}
-static unsigned reg32(unsigned off){return *(volatile u32*)(PSPNative_GfxRegisters+off);}
+extern "C" void VitaNativeG3Release();
+extern "C" unsigned char VitaNative_GfxRegisters[];
+static unsigned reg16(unsigned off){return *(volatile u16*)(VitaNative_GfxRegisters+off);}
+static unsigned reg32(unsigned off){return *(volatile u32*)(VitaNative_GfxRegisters+off);}
 static void bindRegisters(GPU2D::Unit&u,unsigned base){
  u.Write32(0,reg32(base));
  for(unsigned off=8;off<=0x54;off+=2){
@@ -35,28 +35,28 @@ static void mapMemory(){
  memcpy(GPU::Palette,s_HW_BG_PLTT,512);memcpy(GPU::Palette+512,s_HW_OBJ_PLTT,512);
  memcpy(GPU::Palette+1024,s_HW_DB_BG_PLTT,512);memcpy(GPU::Palette+1536,s_HW_DB_OBJ_PLTT,512);
  memcpy(GPU::OAM,s_HW_OAM,1024);memcpy(GPU::OAM+1024,s_HW_DB_OAM,1024);
- GPU::VRAMMap_LCDC=0;for(unsigned i=0;i<4;i++){GPU::VRAM[i]=s_HW_LCDC_VRAM+i*0x20000;if((*(volatile u8*)(PSPNative_GfxRegisters+0x240+i)&0x87)==0x80)GPU::VRAMMap_LCDC|=1u<<i;}
+ GPU::VRAMMap_LCDC=0;for(unsigned i=0;i<4;i++){GPU::VRAM[i]=s_HW_LCDC_VRAM+i*0x20000;if((*(volatile u8*)(VitaNative_GfxRegisters+0x240+i)&0x87)==0x80)GPU::VRAMMap_LCDC|=1u<<i;}
  memset(GPU::VRAMFlat_ABGExtPal,0,32768);memset(GPU::VRAMFlat_BBGExtPal,0,32768);memset(GPU::VRAMFlat_AOBJExtPal,0,8192);memset(GPU::VRAMFlat_BOBJExtPal,0,8192);
- unsigned e=*(volatile u8*)(PSPNative_GfxRegisters+0x244);
+ unsigned e=*(volatile u8*)(VitaNative_GfxRegisters+0x244);
  if((e&0x87)==0x84)memcpy(GPU::VRAMFlat_ABGExtPal,s_HW_LCDC_VRAM+0x80000,32768);
- for(unsigned i=0;i<2;i++){unsigned c=*(volatile u8*)(PSPNative_GfxRegisters+0x245+i);const u8*src=s_HW_LCDC_VRAM+0x90000+i*0x4000;
+ for(unsigned i=0;i<2;i++){unsigned c=*(volatile u8*)(VitaNative_GfxRegisters+0x245+i);const u8*src=s_HW_LCDC_VRAM+0x90000+i*0x4000;
   if((c&0x87)==0x84)memcpy(GPU::VRAMFlat_ABGExtPal+((c&8)?16384:0),src,16384);
   if((c&0x87)==0x85)memcpy(GPU::VRAMFlat_AOBJExtPal,src,8192);
  }
- if((*(volatile u8*)(PSPNative_GfxRegisters+0x248)&0x87)==0x82)memcpy(GPU::VRAMFlat_BBGExtPal,s_HW_LCDC_VRAM+0x98000,32768);
- if((*(volatile u8*)(PSPNative_GfxRegisters+0x249)&0x87)==0x83)memcpy(GPU::VRAMFlat_BOBJExtPal,s_HW_LCDC_VRAM+0xa0000,8192);
+ if((*(volatile u8*)(VitaNative_GfxRegisters+0x248)&0x87)==0x82)memcpy(GPU::VRAMFlat_BBGExtPal,s_HW_LCDC_VRAM+0x98000,32768);
+ if((*(volatile u8*)(VitaNative_GfxRegisters+0x249)&0x87)==0x83)memcpy(GPU::VRAMFlat_BOBJExtPal,s_HW_LCDC_VRAM+0xa0000,8192);
 }
 #include "bottom_cache.h"
-extern "C" void PSPNativeRenderSetInput(unsigned keys,int touchMode,int touchDown,int tx,int ty){inputKeys=keys;mode=touchMode;down=touchDown;x=tx;y=ty;}
-extern "C" unsigned PSPNativeRenderLastDrawMask(){return lastDraw;}
-extern "C" unsigned PSPNativeRenderFrameCount(){return frames;}
-extern "C" int PSPNativeRenderInit(){
+extern "C" void VitaNativeRenderSetInput(unsigned keys,int touchMode,int touchDown,int tx,int ty){inputKeys=keys;mode=touchMode;down=touchDown;x=tx;y=ty;}
+extern "C" unsigned VitaNativeRenderLastDrawMask(){return lastDraw;}
+extern "C" unsigned VitaNativeRenderFrameCount(){return frames;}
+extern "C" int VitaNativeRenderInit(){
  if(initialized)return 0;frames=0;bottomCache.valid=false;previousPower=~0u;grace=0;displayOffset=0;engineA.Reset();engineB.Reset();sceGuInit();
  sceGuStart(GU_DIRECT,list);sceGuDrawBuffer(GU_PSM_8888,(void*)0,512);sceGuDispBuffer(480,272,(void*)0x88000,512);
  sceGuScissor(0,0,480,272);sceGuEnable(GU_SCISSOR_TEST);sceGuFinish();sceGuSync(0,0);sceGuDisplay(GU_TRUE);
  G3SIM_MtxMode(GX_MTXMODE_TEXTURE);G3SIM_Identity();G3SIM_MtxMode(GX_MTXMODE_PROJECTION);G3SIM_Identity();G3SIM_MtxMode(GX_MTXMODE_POSITION_VECTOR);G3SIM_Identity();initialized=true;return 0;
 }
-extern "C" int PSPNativeRenderBegin(){
+extern "C" int VitaNativeRenderBegin(){
  if(!initialized||openFrame)return -1;openFrame=true;sceGuStart(GU_DIRECT,list);sceGuDrawBufferList(GU_PSM_8888,(void*)0x110000,256);
  sceGuDepthBuffer((void*)0x140000,256);sceGuDepthRange(0,65535);sceGuOffset(2048-128,2048-96);sceGuViewport(2048,2048,256,192);sceGuScissor(0,0,256,192);
  sceGuEnable(GU_SCISSOR_TEST);sceGuEnable(GU_DEPTH_TEST);sceGuDepthFunc(GU_LEQUAL);sceGuDisable(GU_CULL_FACE);sceGuDisable(GU_BLEND);sceGuDisable(GU_TEXTURE_2D);
@@ -98,13 +98,13 @@ static int Present(bool waitForVblank){
  if(mode){struct C{u32 color;short x,y,z;};C*c=(C*)sceGuGetMemory(4*sizeof(C));short cx=240+(x*240)/256,cy=45+(y*180)/192;u32 col=down?0xff00ffff:0xffffffff;c[0]={col,short(cx-3),cy,0};c[1]={col,short(cx+3),cy,0};c[2]={col,cx,short(cy-3),0};c[3]={col,cx,short(cy+3),0};sceGuDisable(GU_TEXTURE_2D);sceGuDrawArray(GU_LINES,GU_COLOR_8888|GU_VERTEX_16BIT|GU_TRANSFORM_2D,4,0,c);}
  sceGuFinish();sceGuSync(0,0);if(waitForVblank)sceDisplayWaitVblankStart();sceDisplaySetFrameBuf((void*)((u8*)sceGeEdramGetAddr()+displayOffset),512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);displayOffset^=0x88000;frames++;return 0;
 }
-extern "C" void PSPNativeRenderShutdown(){if(openFrame){sceGuFinish();sceGuSync(0,0);openFrame=false;}if(initialized){sceGuSync(0,0);PSPNativeG3Release();sceGuDisplay(GU_FALSE);sceGuTerm();initialized=false;}}
+extern "C" void VitaNativeRenderShutdown(){if(openFrame){sceGuFinish();sceGuSync(0,0);openFrame=false;}if(initialized){sceGuSync(0,0);VitaNativeG3Release();sceGuDisplay(GU_FALSE);sceGuTerm();initialized=false;}}
 
-extern "C" unsigned PSPNativeRenderTestPixel(unsigned e,unsigned x,unsigned y){u32 c=__builtin_allegrex_wsbw(raw[e&1][(y%192)*256+(x%256)]);return (c>>8)|(c<<24);}
+extern "C" unsigned VitaNativeRenderTestPixel(unsigned e,unsigned x,unsigned y){u32 c=__builtin_allegrex_wsbw(raw[e&1][(y%192)*256+(x%256)]);return (c>>8)|(c<<24);}
 
-extern "C" void PSPNativeRenderGetTimings(unsigned*r,unsigned*s){if(r)*r=lastReadbackUs;if(s)*s=last2DUs;}
+extern "C" void VitaNativeRenderGetTimings(unsigned*r,unsigned*s){if(r)*r=lastReadbackUs;if(s)*s=last2DUs;}
 
 extern "C" unsigned RenderStage(unsigned stage){return stage==0?bindUs:stage==1?drawUs:convertUs;}
 
-extern "C" int PSPNativeRenderPresent(){return Present(true);}
-extern "C" int PSPNativeRenderPresentNoWait(){return Present(false);}
+extern "C" int VitaNativeRenderPresent(){return Present(true);}
+extern "C" int VitaNativeRenderPresentNoWait(){return Present(false);}

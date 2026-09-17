@@ -13,7 +13,7 @@ extern void CallTask_LeaveOverworld(TaskManager *taskManager);
 extern void *FieldSystem_GetSaveData(void *fieldSystem);
 extern void __real_sub_02078B78(TaskManager *taskManager, u16 *var_p);
 extern void __real_sub_02078B58(TaskManager *taskManager);
-extern void PSPNativeMemLog(const char *fmt, ...);
+extern void VitaNativeMemLog(const char *fmt, ...);
 
 static u16 *sResult;
 
@@ -35,7 +35,7 @@ void __wrap_sub_02078B78(TaskManager *taskManager, u16 *var_p)
     }
     /* ScrCmd_166 scripts (Global Terminal) do not leave the overworld themselves - the skipped setup app did - and they
      * end with RestoreOverworld, which asserts if the overworld is still up. Leave it the way the app launch would. */
-    PSPNativeMemLog("[SS-WIFI] no Wi-Fi profile: connection task skipped, overworld left (ScrCmd_166)");
+    VitaNativeMemLog("[SS-WIFI] no Wi-Fi profile: connection task skipped, overworld left (ScrCmd_166)");
     if (var_p != NULL) {
         *var_p = 0;
     }
@@ -48,7 +48,7 @@ void __wrap_sub_02078B58(TaskManager *taskManager)
         __real_sub_02078B58(taskManager);
         return;
     }
-    PSPNativeMemLog("[SS-WIFI] no Wi-Fi profile: connection task skipped (ScrCmd_152)");
+    VitaNativeMemLog("[SS-WIFI] no Wi-Fi profile: connection task skipped (ScrCmd_152)");
     sResult = NULL;
     TaskManager_Call(taskManager, WifiUnavailableTask, NULL);
 }

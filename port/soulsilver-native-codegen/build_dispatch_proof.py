@@ -6,7 +6,7 @@ env=os.environ.copy();env['PSPDEV']=str(Path.home()/'pspdev');env['PATH']=env['P
 line=subprocess.check_output(['make','-n','-B','frontend.o'],cwd=r,env=env,text=True).strip().splitlines()[-1]
 base=line.split();base=base[:base.index('-c')]
 for kind,file in [('original','frontend.original.cpp'),('candidate','frontend.cpp')]:
- defs=['-D'+n+'='+kind+'_'+n for n in ['PSPNativeG3CommandsBorrowed','PSPNativeG3GetProfile','SIM_HandleG3Command','ModelFrontendPolygons','s_numG3DrawsThisFrame','g3ProfUs','g3ProfCalls']]
+ defs=['-D'+n+'='+kind+'_'+n for n in ['VitaNativeG3CommandsBorrowed','VitaNativeG3GetProfile','SIM_HandleG3Command','ModelFrontendPolygons','s_numG3DrawsThisFrame','g3ProfUs','g3ProfCalls']]
  subprocess.run(base+defs+['-c',str(r/file),'-o',str(p/(kind+'.o'))],cwd=r,env=env,check=True)
 header=(h.parent/'native-graphics/libntr/include/simulator/g3_handler.h').read_text()
 needed=subprocess.check_output([env['PSPDEV']+'/bin/psp-nm','-u',str(p/'candidate.o')],text=True)

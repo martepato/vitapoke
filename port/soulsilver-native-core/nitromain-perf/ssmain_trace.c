@@ -1,5 +1,5 @@
 #include <stdio.h>
-extern void PSPNativeFrameComplete(void);
+extern void VitaNativeFrameComplete(void);
 #include "save_arrays.h"
 #include "main.h"
 
@@ -85,7 +85,7 @@ void NitroMain(void) {
     InitSoundData(Save_Chatot_Get(_02111868.unk_10.saveData), Save_PlayerData_GetOptionsAddr(_02111868.unk_10.saveData));
     printf("[SS-INIT] Init_Timer3\n");
     Init_Timer3();
-#ifndef PSP_NATIVE_OFFLINE
+#ifndef VITAPOKE_OFFLINE
     if (sub_02039FFC(3) == 3) {
         ShowWFCUserInfoWarning(HEAP_ID_3, 0);
     }
@@ -155,7 +155,7 @@ void NitroMain(void) {
         }
         DoSoundUpdateFrame();
         SysTaskQueue_RunTasks(gSystem.vwaitTaskQueue);
-        PSPNativeFrameComplete();
+        VitaNativeFrameComplete();
     }
 }
 

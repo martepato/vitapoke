@@ -40,6 +40,6 @@ static void aliasTest(){
  s_reg_G2_BG2X=1024;s_reg_G2_BG2Y=512;render();
  check(hashA()==packed&&packed!=original,"rendered affine SDK and scalar writes");
  printf("[ALIAS] checks=%u failures=%u scroll_crc=%08lx affine_crc=%08lx\n",checks,errors,(unsigned long)original,(unsigned long)packed);
- memset(PSPNative_GfxRegisters,0,4224);memset(s_HW_BG_VRAM,0,sizeof(s_HW_BG_VRAM));
+ memset(VitaNative_GfxRegisters,0,4224);memset(s_HW_BG_VRAM,0,sizeof(s_HW_BG_VRAM));
  memset(s_HW_DB_BG_VRAM,0,sizeof(s_HW_DB_BG_VRAM));
 }

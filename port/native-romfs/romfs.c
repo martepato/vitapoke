@@ -13,7 +13,7 @@ static u32 romSize,fatSize,fntSize,dirCount,currentDir,dma;
 static BOOL ready;
 static u16 U16(const void*p){const u8*b=p;return b[0]|((u16)b[1]<<8);}
 static u32 U32(const void*p){const u8*b=p;return U16(b)|((u32)U16(b+2)<<16);}
-BOOL PSPNativeRomFS_SetPath(const char*path){if(ready||!path||strlen(path)>=sizeof(romPath))return FALSE;strcpy(romPath,path);return TRUE;}
+BOOL VitaNativeRomFS_SetPath(const char*path){if(ready||!path||strlen(path)>=sizeof(romPath))return FALSE;strcpy(romPath,path);return TRUE;}
 void FS_End(void){free(tables);tables=fat=fnt=NULL;ready=FALSE;memset(&archive,0,sizeof(archive));}
 void FS_Init(u32 channel){
  dma=channel;if(ready)return;

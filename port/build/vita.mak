@@ -27,7 +27,10 @@ VITA_PACK_VPK   = $(dir $(PREFIX))vita-pack-vpk
 INCDIR := $(INCDIR) .
 CFLAGS := $(addprefix -I,$(INCDIR)) $(CFLAGS)
 CXXFLAGS := $(addprefix -I,$(INCDIR)) $(CXXFLAGS)
-ASFLAGS := $(CFLAGS) $(ASFLAGS)
+# Assembly gets the include paths, the defines and the CPU flags, and nothing else: the C flags also
+# carry force-included headers (the DS SDK expects some declarations the C sources do not ask for),
+# and the assembler would try to assemble them.
+ASFLAGS := $(filter -I% -D% -m%,$(CFLAGS)) $(ASFLAGS)
 
 # -Wl,-q keeps the relocations vita-elf-create needs to turn an ELF into a Vita module.
 LDFLAGS := -Wl,-q $(LDFLAGS)

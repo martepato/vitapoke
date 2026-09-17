@@ -12,7 +12,7 @@
 #include <nitro.h>
 #include <stdint.h>
 
-extern void PSPNativeMemLog(const char *fmt, ...);
+extern void VitaNativeMemLog(const char *fmt, ...);
 
 extern u8 s_HW_MAIN_MEM_SYSTEM[], s_HW_BG_PLTT[], s_HW_OBJ_PLTT[], s_HW_DB_BG_PLTT[], s_HW_DB_OBJ_PLTT[];
 extern u8 s_HW_BG_VRAM[], s_HW_DB_BG_VRAM[], s_HW_OBJ_VRAM[], s_HW_DB_OBJ_VRAM[], s_HW_LCDC_VRAM[];
@@ -38,7 +38,7 @@ static void *Fix(const void *p, const char *who)
         if (v >= sWindows[i].base && v < sWindows[i].base + sWindows[i].size) {
             if (sLogged < 16) {
                 sLogged++;
-                PSPNativeMemLog("[MI-HW] %s: DS %08x -> %s+0x%x", who, (unsigned)v, sWindows[i].name,
+                VitaNativeMemLog("[MI-HW] %s: DS %08x -> %s+0x%x", who, (unsigned)v, sWindows[i].name,
                                 (unsigned)(v - sWindows[i].base));
             }
             return sWindows[i].sym + (v - sWindows[i].base);

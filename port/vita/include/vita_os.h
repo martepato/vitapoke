@@ -53,8 +53,8 @@ unsigned long long VitaOS_Now(void);
 /* The port's log. printf goes nowhere on a console, so everything that matters after boot goes to
  * a file next to the application. Implemented by the application, declared here so the platform
  * sources can report without depending on which game they are linked into. */
-void PSPNativeMemLog(const char *fmt, ...);
-void PSPNativeFatal(const char *message);
+void VitaNativeMemLog(const char *fmt, ...);
+void VitaNativeFatal(const char *message);
 
 #ifdef __cplusplus
 }

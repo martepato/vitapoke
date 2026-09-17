@@ -18,7 +18,7 @@ name, and can be left out at build time:
 
 The flags only change code that runs in RAM: your ROM is never modified and the save format is the same, so a save
 moves freely between builds with different switches (a Pokémon that evolved under `--trade-evos` stays evolved).
-The switches are `#define`s in a generated header (`pspoke_qol.h`), and every change in the source is wrapped in
+The switches are `#define`s in a generated header (`vitapoke_qol.h`), and every change in the source is wrapped in
 `#if VITAPOKE_QOL_...` so you can find them: `patches/platinum/qol-overlay-sources.patch` and
 `patches/soulsilver/qol.patch`.
 

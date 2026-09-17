@@ -10,8 +10,10 @@
 #include "tracy/TracyC.h"
 #endif
 
+#ifdef VITAPOKE_SIM_AUDIO_DEVICE
 static SDL_AudioSpec s_requestedAudioSpec, s_actualAudioSpec;
 static SDL_AudioDeviceID s_audioDevice;
+#endif
 
 u32 s_SIM_sndcnt[16] = {0};
 u8 * s_SIM_sndsad[16] = {0};
@@ -73,6 +75,17 @@ static const s16 s_PSGTable[8][8] =
 #define INTERNAL_SAMPLE_RATE 16756991.f
 
 
+/* The desktop simulator's audio device, and the resampler that feeds it.
+ *
+ * Neither is used on a console. This port takes the mixer's own output instead -- see
+ * VitaNativeAudioMixBlock further down -- and plays it through sceAudioOut at the DS's rate, with no
+ * resampling in software at all. These two functions are the SDL path they replace: kept as the
+ * reference for what the simulator does, compiled only where there is an SDL audio device to open.
+ */
+static u8 GetNextADPCMByte(int chNo);
+static void PanOutput(s32 in, s32 * left, s32 * right, int chNo);
+
+#ifdef VITAPOKE_SIM_AUDIO_DEVICE
 void SIM_Audio_Init(int aAudioFrequency)
 {
     s_BlipLeft = blip_new(512*64);
@@ -97,9 +110,6 @@ void SIM_Audio_Init(int aAudioFrequency)
     }
     SDL_PauseAudio(0);
 }
-
-static u8 GetNextADPCMByte(int chNo);
-static void PanOutput(s32 in, s32 * left, s32 * right, int chNo);
 
 void SIM_Audio_Callback(void *userdata, Uint8 *stream, int len)
 {
@@ -174,14 +184,10 @@ void SIM_Audio_Callback(void *userdata, Uint8 *stream, int len)
     #endif
 }
 
-#ifdef PSP_NATIVE_SAS
-extern "C" { u32 PSPNativeSasStartGen[16]; }
-#endif
+#endif /* VITAPOKE_SIM_AUDIO_DEVICE */
+
 void SIM_Audio_StartChannel(int chNo)
 {
-#ifdef PSP_NATIVE_SAS
-    PSPNativeSasStartGen[chNo]++;   /* sas_out.c re-keys the voice when this changes */
-#endif
     if(((s_SIM_sndcnt[chNo]>>29)&0x3) == 3) {
         s_SIM_internalSoundPos[chNo] = -1;
     } else {
@@ -398,10 +404,10 @@ static void PanOutput(s32 in, s32 * left, s32 * right, int chNo)
     *left += ((s64)in * (128-pan)) >> 10;
     *right += ((s64)in * pan) >> 10;
 }
-extern "C" u32 PSPNativeAudioStateHash(void){u32 hash=2166136261u;for(int i=0;i<16;i++){u32 values[]={s_SIM_sndcnt[i],s_SIM_sndtmr[i],s_SIM_sndpnt[i],s_SIM_sndlen[i],(u32)s_SIM_internalSoundTimer[i],(u32)s_SIM_internalSoundPos[i],(u32)s_SIM_internalSoundSample[i],(u32)s_SIM_internalADPCMValLoop[i],(u32)s_SIM_internalADPCMIndexLoop[i],(u32)s_SIM_internalADPCMVal[i],(u32)s_SIM_internalADPCMIndex[i],s_SIM_internalADPCMCurByte[i],(u32)s_SIM_internalNextADPCMByte[i],s_SIM_internalNoiseVal[i]};for(unsigned j=0;j<sizeof(values)/sizeof(values[0]);j++)hash=(hash^values[j])*16777619u;}return hash;}
+extern "C" u32 VitaNativeAudioStateHash(void){u32 hash=2166136261u;for(int i=0;i<16;i++){u32 values[]={s_SIM_sndcnt[i],s_SIM_sndtmr[i],s_SIM_sndpnt[i],s_SIM_sndlen[i],(u32)s_SIM_internalSoundTimer[i],(u32)s_SIM_internalSoundPos[i],(u32)s_SIM_internalSoundSample[i],(u32)s_SIM_internalADPCMValLoop[i],(u32)s_SIM_internalADPCMIndexLoop[i],(u32)s_SIM_internalADPCMVal[i],(u32)s_SIM_internalADPCMIndex[i],s_SIM_internalADPCMCurByte[i],(u32)s_SIM_internalNextADPCMByte[i],s_SIM_internalNoiseVal[i]};for(unsigned j=0;j<sizeof(values)/sizeof(values[0]);j++)hash=(hash^values[j])*16777619u;}return hash;}
 
 /* ---- Silent (muted) channel advance -----------------------------------------
- * The native PSP app produces no speaker output. When PSPNativeSoundSilent is
+ * The native PSP app produces no speaker output. When VitaNativeSoundSilent is
  * nonzero the pump advances each busy channel arithmetically instead of running
  * SIM_Audio_RunChannel in 512-cycle chunks: the internal sample timer, the
  * sample position and the channel enable bit (bit 31 of s_SIM_sndcnt, which
@@ -412,7 +418,7 @@ extern "C" u32 PSPNativeAudioStateHash(void){u32 hash=2166136261u;for(int i=0;i<
  * are not maintained while silent: nothing outside this engine reads them.
  */
 extern "C" {
-int PSPNativeSoundSilent = 1;
+int VitaNativeSoundSilent = 1;
 static unsigned s_silentVerifyMismatches, s_silentVerifyChecks, s_silentVerifyStops;
 
 static inline u32 SilentSamplesFor(u32 timer, u32 cycles, u32 period)
@@ -521,15 +527,15 @@ void SIM_Audio_VerifySilentAdvance(u32 cycles, u32 chunk, int chNo)
                    s_SIM_sndtmr[chNo], s_SIM_sndpnt[chNo], (unsigned long)s_SIM_sndlen[chNo]);
     }
 }
-unsigned PSPNativeSoundSilentVerifyChecks(void){return s_silentVerifyChecks;}
-unsigned PSPNativeSoundSilentVerifyMismatches(void){return s_silentVerifyMismatches;}
-unsigned PSPNativeSoundSilentVerifyStops(void){return s_silentVerifyStops;}
+unsigned VitaNativeSoundSilentVerifyChecks(void){return s_silentVerifyChecks;}
+unsigned VitaNativeSoundSilentVerifyMismatches(void){return s_silentVerifyMismatches;}
+unsigned VitaNativeSoundSilentVerifyStops(void){return s_silentVerifyStops;}
 }
 
 /* ---- Cheap block mixer for the PSP native port -------------------------------
  * Replaces the per-512-cycle, per-sample, all-16-channel round trip through
  * SIM_Audio_RunChannel with one tight loop per active channel per block:
- *   - one output sample per PSP_AUDIO_STEP_CYCLES ARM7 cycles (DS-native rate
+ *   - one output sample per VITAPOKE_AUDIO_STEP_CYCLES ARM7 cycles (DS-native rate
  *     class, ~32 kHz) instead of one per 512 cycles (~65 kHz): half the work;
  *   - the sample type is dispatched once per channel per block, not per sample,
  *     via a template, so the decoder is inlined straight into the loop;
@@ -549,30 +555,30 @@ unsigned PSPNativeSoundSilentVerifyStops(void){return s_silentVerifyStops;}
  * 16756991/524 = 31979.0 Hz, played out through a 32000 Hz sceAudio SRC
  * channel: 0.066% sharp, about a hundredth of a semitone.
  * (The reference SDL mixer used 512 ticks = 32728 Hz.) */
-#ifndef PSP_AUDIO_QUIET
-#define PSP_AUDIO_QUIET 32
+#ifndef VITAPOKE_AUDIO_QUIET
+#define VITAPOKE_AUDIO_QUIET 32
 #endif
-/* Cheap mode (the default). PSP_AUDIO_MONO=1 drops per-channel panning: one
+/* Cheap mode (the default). VITAPOKE_AUDIO_MONO=1 drops per-channel panning: one
  * multiply and one accumulator per sample instead of two, and the block is
- * duplicated to both speakers at the end. PSP_AUDIO_MAX_VOICES caps how many
+ * duplicated to both speakers at the end. VITAPOKE_AUDIO_MAX_VOICES caps how many
  * channels are decoded per block - the loudest N survive, the rest get the
  * arithmetic advance. Decoding is the mixer's dominant cost (the soundtrack is
  * all ADPCM), so the cap is the single biggest lever there is.
- * -DPSP_AUDIO_MONO=0 -DPSP_AUDIO_MAX_VOICES=16 restores full quality. */
-#ifndef PSP_AUDIO_MONO
-#define PSP_AUDIO_MONO 1
+ * -DVITAPOKE_AUDIO_MONO=0 -DVITAPOKE_AUDIO_MAX_VOICES=16 restores full quality. */
+#ifndef VITAPOKE_AUDIO_MONO
+#define VITAPOKE_AUDIO_MONO 1
 #endif
-#ifndef PSP_AUDIO_MAX_VOICES
-#define PSP_AUDIO_MAX_VOICES 6
+#ifndef VITAPOKE_AUDIO_MAX_VOICES
+#define VITAPOKE_AUDIO_MAX_VOICES 6
 #endif
 /* Masking threshold, in output units, below which a channel is advanced but
  * not decoded. Set once per block by the backend from the running peak of the
- * mix (see PSP_AUDIO_QUIET_SHIFT in backend.c), so a loud passage hides more
+ * mix (see VITAPOKE_AUDIO_QUIET_SHIFT in backend.c), so a loud passage hides more
  * and a quiet one hides almost nothing. */
-extern "C" int PSPNativeAudioQuietLevel;
-int PSPNativeAudioQuietLevel = PSP_AUDIO_QUIET;
-#ifndef PSP_AUDIO_STEP_CYCLES
-#define PSP_AUDIO_STEP_CYCLES 524
+extern "C" int VitaNativeAudioQuietLevel;
+int VitaNativeAudioQuietLevel = VITAPOKE_AUDIO_QUIET;
+#ifndef VITAPOKE_AUDIO_STEP_CYCLES
+#define VITAPOKE_AUDIO_STEP_CYCLES 524
 #endif
 
 static unsigned s_mixActiveMask;
@@ -605,11 +611,11 @@ static void BuildADPCMTables(void)
     s_adpcmTablesReady = 1;
 }
 
-#ifdef PSP_NATIVE_AUDIO_STATS
+#ifdef VITAPOKE_AUDIO_STATS
 static unsigned s_mixDecodes, s_mixSamples, s_mixChanBlocks, s_mixLiveMax;
 static unsigned s_decByType[5], s_blkByType[5], s_quietBlk, s_quietDec, s_centreBlk;
-extern "C" void PSPNativeAudioMixStats2(unsigned*d,unsigned*b,unsigned*q){for(int i=0;i<5;i++){d[i]=s_decByType[i];b[i]=s_blkByType[i];}q[0]=s_quietBlk;q[1]=s_quietDec;q[2]=s_centreBlk;}
-extern "C" void PSPNativeAudioMixStats(unsigned*d,unsigned*s,unsigned*c,unsigned*m){*d=s_mixDecodes;*s=s_mixSamples;*c=s_mixChanBlocks;*m=s_mixLiveMax;}
+extern "C" void VitaNativeAudioMixStats2(unsigned*d,unsigned*b,unsigned*q){for(int i=0;i<5;i++){d[i]=s_decByType[i];b[i]=s_blkByType[i];}q[0]=s_quietBlk;q[1]=s_quietDec;q[2]=s_centreBlk;}
+extern "C" void VitaNativeAudioMixStats(unsigned*d,unsigned*s,unsigned*c,unsigned*m){*d=s_mixDecodes;*s=s_mixSamples;*c=s_mixChanBlocks;*m=s_mixLiveMax;}
 #endif
 
 template <int TYPE>
@@ -653,7 +659,7 @@ static void MixChannelBlock(s32 *__restrict outL, s32 *__restrict outR,
         timer += (s32)step;
         while (timer >= 0x10000) {
             timer -= period;
-#ifdef PSP_NATIVE_AUDIO_STATS
+#ifdef VITAPOKE_AUDIO_STATS
             s_mixDecodes++; s_decByType[TYPE]++;
 #endif
             if (TYPE == 0) {                                   /* PCM8 */
@@ -717,7 +723,7 @@ static void MixChannelBlock(s32 *__restrict outL, s32 *__restrict outR,
                 else { noise = (u16)(noise >> 1); sample = 0x7FFF; }
             }
         }
-#if PSP_AUDIO_MONO
+#if VITAPOKE_AUDIO_MONO
         outL[i] += (sample * gl) >> gshift;
 #else
         {
@@ -747,11 +753,11 @@ static void MixChannelBlock(s32 *__restrict outL, s32 *__restrict outR,
 
 extern "C" {
 
-/* Mix `n` samples (one every PSP_AUDIO_STEP_CYCLES ARM7 cycles) of every busy
+/* Mix `n` samples (one every VITAPOKE_AUDIO_STEP_CYCLES ARM7 cycles) of every busy
  * channel into the two accumulators, which the caller has already cleared. */
-void PSPNativeAudioMixBlock(s32 *outL, s32 *outR, unsigned n)
+void VitaNativeAudioMixBlock(s32 *outL, s32 *outR, unsigned n)
 {
-    const u32 step = PSP_AUDIO_STEP_CYCLES;
+    const u32 step = VITAPOKE_AUDIO_STEP_CYCLES;
     const u32 cycles = step * n;
     int chan[16], type_[16], gl_[16], gr_[16], gshift_[16], level[16];
     int nc = 0;
@@ -772,7 +778,7 @@ void PSPNativeAudioMixBlock(s32 *outL, s32 *outR, unsigned n)
         const int vol = (int)(cnt & 0x7F);
         const int pan = (int)((cnt >> 16) & 0x7F);
         const int gshift = 17 + (int)((cnt >> 8) & 0x3);
-#if PSP_AUDIO_MONO
+#if VITAPOKE_AUDIO_MONO
         const int gl = vol << 7, gr = gl;
 #else
         const int gl = vol * (128 - pan), gr = vol * pan;
@@ -785,17 +791,17 @@ void PSPNativeAudioMixBlock(s32 *outL, s32 *outR, unsigned n)
     }
 
     /* Pass 2: the masking floor, raised if more voices are live than the cap. */
-    int floorLevel = PSPNativeAudioQuietLevel;
-    if (nc > PSP_AUDIO_MAX_VOICES) {
+    int floorLevel = VitaNativeAudioQuietLevel;
+    if (nc > VITAPOKE_AUDIO_MAX_VOICES) {
         /* Level of the (MAX_VOICES)th loudest: selection over at most 16. */
         int sorted[16];
         for (int i = 0; i < nc; i++) sorted[i] = level[i];
-        for (int i = 0; i < PSP_AUDIO_MAX_VOICES; i++) {
+        for (int i = 0; i < VITAPOKE_AUDIO_MAX_VOICES; i++) {
             int best = i;
             for (int j = i + 1; j < nc; j++) if (sorted[j] > sorted[best]) best = j;
             int t = sorted[i]; sorted[i] = sorted[best]; sorted[best] = t;
         }
-        int cut = sorted[PSP_AUDIO_MAX_VOICES - 1];
+        int cut = sorted[VITAPOKE_AUDIO_MAX_VOICES - 1];
         if (cut > floorLevel) floorLevel = cut;
     }
 
@@ -803,7 +809,7 @@ void PSPNativeAudioMixBlock(s32 *outL, s32 *outR, unsigned n)
     int mixed = 0;
     for (int i = 0; i < nc; i++) {
         const int ch = chan[i];
-        if (level[i] < floorLevel || mixed >= PSP_AUDIO_MAX_VOICES) {
+        if (level[i] < floorLevel || mixed >= VITAPOKE_AUDIO_MAX_VOICES) {
             SIM_Audio_AdvanceChannelSilent(cycles, step, ch);
             continue;
         }
@@ -818,6 +824,6 @@ void PSPNativeAudioMixBlock(s32 *outL, s32 *outR, unsigned n)
     }
 }
 
-unsigned PSPNativeAudioMixActiveMask(void) { return s_mixActiveMask; }
+unsigned VitaNativeAudioMixActiveMask(void) { return s_mixActiveMask; }
 
 } /* extern "C" */

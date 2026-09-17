@@ -5,8 +5,8 @@
 #include <cstring>
 #include <simulator/g3_draw.h>
 #include <simulator/g3_handler.h>
-extern "C" void* PSPNativeGUGetMemory(unsigned);
-extern "C" void PSPNativeGUTextureFence();
+extern "C" void* VitaNativeGUGetMemory(unsigned);
+extern "C" void VitaNativeGUTextureFence();
 #include "g3_vtx.h"
 static GuVertex vertices[6144] __attribute__((aligned(16)));
 GuVertex *g3ChunkPtr=vertices;unsigned g3ChunkLeft=6144;
@@ -26,7 +26,7 @@ static void DrawVertices(const GuVertex*v,unsigned count,bool copy);
 extern "C" void G3ListDrawDirect(const GuVertex*v,unsigned n){G3SIM_FlushArray();DrawVertices(v,n,false);}
 /* Cache memory the GE may still be reading is freed only after the next sceGuSync. */
 static void*pendingFree[256];static unsigned pendingFreeN;
-extern "C" void G3ListDeferFree(void*p){if(!p)return;if(pendingFreeN==256)PSPNativeGUTextureFence();pendingFree[pendingFreeN++]=p;}
+extern "C" void G3ListDeferFree(void*p){if(!p)return;if(pendingFreeN==256)VitaNativeGUTextureFence();pendingFree[pendingFreeN++]=p;}
 #ifdef OPT_GE_ASYNC
 static unsigned pendingFreeHigh;extern "C" unsigned G3ListPendingFreeHigh(){unsigned v=pendingFreeHigh;pendingFreeHigh=0;return v;}
 extern "C" void G3ListPendingFreeDrain(){if(pendingFreeN>pendingFreeHigh)pendingFreeHigh=pendingFreeN;for(unsigned i=0;i<pendingFreeN;i++)free(pendingFree[i]);pendingFreeN=0;}
@@ -65,7 +65,7 @@ extern "C" void G3SIM_AddVtx(G3SIM_Vertex_t* v) {
 #ifdef G3_STREAM_HASH
 static unsigned streamHash=2166136261u,streamVertices=0;
 static void TraceVertices(const GuVertex*p,unsigned count){const unsigned*w=(const unsigned*)p;for(unsigned i=0;i<count*6;i++)streamHash=(streamHash^w[i])*16777619u;streamVertices+=count;}
-extern "C" void PSPNativeVertexTrace(unsigned frame){unsigned aux=2166136261u;const unsigned*w=(const unsigned*)s_g3PolygonVerts;for(unsigned i=0;i<sizeof(s_g3PolygonVerts)/4;i++)aux=(aux^w[i])*16777619u;printf("[VERTEX-TRACE] frame=%u vertices=%u hash=%08x aux=%08x\n",frame,streamVertices,streamHash,aux);}
+extern "C" void VitaNativeVertexTrace(unsigned frame){unsigned aux=2166136261u;const unsigned*w=(const unsigned*)s_g3PolygonVerts;for(unsigned i=0;i<sizeof(s_g3PolygonVerts)/4;i++)aux=(aux^w[i])*16777619u;printf("[VERTEX-TRACE] frame=%u vertices=%u hash=%08x aux=%08x\n",frame,streamVertices,streamHash,aux);}
 #else
 static void TraceVertices(const GuVertex*,unsigned){}
 #endif
@@ -100,12 +100,12 @@ extern "C" void G3SIM_FlushDeferred(){
 extern "C" unsigned G3SIM_DeferredHighWater(){unsigned h=deferredHigh;deferredHigh=0;return h;}
 static void DrawVertices(const GuVertex*v,unsigned count,bool copy){
  if(!count||(cullEnabled&&cullAll))return;
-#ifdef PSP_NATIVE_G3_STATS
+#ifdef VITAPOKE_G3_STATS
  unsigned t0=sceKernelGetSystemTimeLow();
 #endif
  BindTexture();TraceVertices(v,count);
  const GuVertex*submitted=v;
- if(copy){GuVertex*m=(GuVertex*)PSPNativeGUGetMemory(sizeof(GuVertex)*count);memcpy(m,v,sizeof(GuVertex)*count);submitted=m;}
+ if(copy){GuVertex*m=(GuVertex*)VitaNativeGUGetMemory(sizeof(GuVertex)*count);memcpy(m,v,sizeof(GuVertex)*count);submitted=m;}
  sceGuShadeModel(GU_SMOOTH);
  const int vtype=GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|(rawMode?GU_TRANSFORM_3D:GU_TRANSFORM_2D);
  /* Alpha-3D fix (ported from Platinum native-stack-render, 2026-09-13). The 3D buffer's alpha
@@ -118,7 +118,7 @@ static void DrawVertices(const GuVertex*v,unsigned count,bool copy){
     get the same passes as recorded draws. */
  const bool translucent=((v[0].color>>24)!=255)||g3TexPartialAlpha;
  if(translucent&&!replaying&&deferredN<DEFERRED_MAX){
-  GuVertex*m=(GuVertex*)PSPNativeGUGetMemory(sizeof(GuVertex)*count);memcpy(m,v,sizeof(GuVertex)*count);
+  GuVertex*m=(GuVertex*)VitaNativeGUGetMemory(sizeof(GuVertex)*count);memcpy(m,v,sizeof(GuVertex)*count);
   DeferredBatch&d=deferred[deferredN++];d.v=m;d.count=count;d.tex=s_texImageParam;d.pltt=s_texPlttBase;d.clip=rawClip;d.depthFunc=g3DepthFunc;d.front=cullFront;
   d.cullOn=cullEnabled;d.cullAll=cullAll;d.raw=rawMode;d.depthWrite=s_SIM_transDepthWrite!=0;return;}
  const bool depthWrite=replaying?batchDepthWrite:(s_SIM_transDepthWrite!=0);
@@ -130,7 +130,7 @@ static void DrawVertices(const GuVertex*v,unsigned count,bool copy){
   for(unsigned k=1;k<=8;k++){unsigned ref=k*32;if(ref>255)ref=255;sceGuAlphaFunc(GU_GREATER,(k-1)*32+15,0xFF);sceGuStencilFunc(GU_GREATER,ref,0xFF);sceGuDrawArray(GU_TRIANGLES,vtype,count,nullptr,submitted);}
   sceGuPixelMask(0);sceGuDepthMask(GU_FALSE);sceGuDepthFunc(g3DepthFunc);sceGuAlphaFunc(GU_GREATER,0,0xff);sceGuStencilFunc(GU_ALWAYS,255,255);
  }
-#ifdef PSP_NATIVE_G3_STATS
+#ifdef VITAPOKE_G3_STATS
  g3DrawUs+=sceKernelGetSystemTimeLow()-t0;g3DrawN++;
 #endif
 }
@@ -138,14 +138,14 @@ extern "C" void G3SIM_DrawArray() {DrawVertices(vertices,(unsigned)(g3ChunkPtr-v
 extern "C" void G3SIM_DrawCleanUp() {ResetVertices();rawMatrixGen=0;deferredN=0;}
 extern "C" void G3SIM_FlushArray() {G3SIM_DrawArray();ResetVertices();}
 
-extern "C" void PSPNativeG3Release(){for(unsigned i=0;i<cacheSize;i++){free(cache[i].pixels);free(cache[i].snapshot);}cacheSize=cacheBytes=0;ResetVertices();}
-extern "C" void PSPNativeG3TrimCache(){while(cacheSize)EvictOne();}
+extern "C" void VitaNativeG3Release(){for(unsigned i=0;i<cacheSize;i++){free(cache[i].pixels);free(cache[i].snapshot);}cacheSize=cacheBytes=0;ResetVertices();}
+extern "C" void VitaNativeG3TrimCache(){while(cacheSize)EvictOne();}
 
-extern "C" void PSPNativeRawMatrix(const s32*m,unsigned gen){
+extern "C" void VitaNativeRawMatrix(const s32*m,unsigned gen){
  if(rawMatrixGen==gen&&rawMode)return;
  G3SIM_FlushArray();rawMode=true;rawMatrixGen=gen;sceGuEnable(GU_CLIP_PLANES);
  ScePspFMatrix4 clip,identity;float*c=(float*)&clip,*id=(float*)&identity;for(int i=0;i<16;i++){c[i]=m[i]/4096.0f;id[i]=(i%5==0)?1.0f:0.0f;}
  rawClip=clip;sceGuSetMatrix(GU_PROJECTION,&clip);sceGuSetMatrix(GU_VIEW,&identity);sceGuSetMatrix(GU_MODEL,&identity);
 }
 
-extern "C" void PSPNativeRawMode(int value){if(rawMode!=(bool)value){G3SIM_FlushArray();rawMode=value;}}
+extern "C" void VitaNativeRawMode(int value){if(rawMode!=(bool)value){G3SIM_FlushArray();rawMode=value;}}

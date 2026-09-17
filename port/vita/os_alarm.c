@@ -139,13 +139,13 @@ static void StartTimerThread(void)
 		return;
 	wake = sceKernelCreateEventFlag("vitapoke_alarm", 0, 0, NULL);
 	if (wake < 0)
-		PSPNativeFatal("OS_InitAlarm: could not create the alarm event flag");
+		VitaNativeFatal("OS_InitAlarm: could not create the alarm event flag");
 	/* Above the game thread: an alarm whose deadline has passed has to be able to run even while
 	 * the game thread is busy, which is the whole point of it not being on that thread. */
 	timerThread = sceKernelCreateThread("vitapoke_alarm", TimerThread, 0x40, 0x4000, 0,
 	                                    SCE_KERNEL_THREAD_CPU_AFFINITY_MASK_DEFAULT, NULL);
 	if (timerThread < 0)
-		PSPNativeFatal("OS_InitAlarm: could not create the alarm thread");
+		VitaNativeFatal("OS_InitAlarm: could not create the alarm thread");
 	sceKernelStartThread(timerThread, 0, NULL);
 }
 
@@ -170,12 +170,12 @@ void OS_SetAlarm(OSAlarm *alarm, OSTick tick, OSAlarmHandler handler, void *arg)
 	OSAlarm **slot = NULL;
 
 	if (!ready || !alarm || !handler)
-		PSPNativeFatal("OS_SetAlarm: alarms unavailable or bad argument");
+		VitaNativeFatal("OS_SetAlarm: alarms unavailable or bad argument");
 
 	VitaOS_TableLock();
 	if (FindSlot(alarm)) {
 		VitaOS_TableUnlock();
-		PSPNativeFatal("OS_SetAlarm: alarm is already set");
+		VitaNativeFatal("OS_SetAlarm: alarm is already set");
 	}
 	for (int i = 0; i < MAX_ALARMS; i++)
 		if (!slots[i]) {
@@ -184,7 +184,7 @@ void OS_SetAlarm(OSAlarm *alarm, OSTick tick, OSAlarmHandler handler, void *arg)
 		}
 	if (!slot) {
 		VitaOS_TableUnlock();
-		PSPNativeFatal("OS_SetAlarm: no free alarm slot");
+		VitaNativeFatal("OS_SetAlarm: no free alarm slot");
 	}
 	alarm->handler = handler;
 	alarm->arg = arg;
@@ -201,7 +201,7 @@ void OS_SetPeriodicAlarm(OSAlarm *alarm, OSTick start, OSTick period, OSAlarmHan
 	OSTick now, next;
 
 	if (!period)
-		PSPNativeFatal("OS_SetPeriodicAlarm: zero period");
+		VitaNativeFatal("OS_SetPeriodicAlarm: zero period");
 
 	now = OS_GetTick();
 	next = start;
@@ -222,7 +222,7 @@ void OS_SetPeriodicAlarm(OSAlarm *alarm, OSTick start, OSTick period, OSAlarmHan
 void OS_SetAlarmTag(OSAlarm *alarm, u32 tag)
 {
 	if (!tag)
-		PSPNativeFatal("OS_SetAlarmTag: zero tag");
+		VitaNativeFatal("OS_SetAlarmTag: zero tag");
 	alarm->tag = tag;
 }
 
@@ -246,7 +246,7 @@ void OS_CancelAlarm(OSAlarm *alarm)
 void OS_CancelAlarms(u32 tag)
 {
 	if (!tag)
-		PSPNativeFatal("OS_CancelAlarms: zero tag");
+		VitaNativeFatal("OS_CancelAlarms: zero tag");
 	for (int i = 0; i < MAX_ALARMS; i++) {
 		OSAlarm *alarm;
 		VitaOS_TableLock();

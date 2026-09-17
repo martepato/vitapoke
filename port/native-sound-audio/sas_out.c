@@ -1,4 +1,4 @@
-/* sas_out.c - play the DS sound channels through the PSP's own voice mixer, sceSasCore (PSP_NATIVE_SAS).
+/* sas_out.c - play the DS sound channels through the PSP's own voice mixer, sceSasCore (VITAPOKE_SAS).
  *
  * The DS sound engine keeps running on the game thread exactly as in muted mode: the sequencer and
  * exchannel code write the 16 channel registers (s_SIM_*), and SIM_Audio_AdvanceChannelSilent advances
@@ -22,13 +22,13 @@
 #include <pspthreadman.h>
 #include <string.h>
 
-extern void PSPNativeMemLog(const char *fmt, ...);
+extern void VitaNativeMemLog(const char *fmt, ...);
 extern u32 s_SIM_sndcnt[16];
 extern u8 *s_SIM_sndsad[16];
 extern u16 s_SIM_sndtmr[16];
 extern u16 s_SIM_sndpnt[16];
 extern u32 s_SIM_sndlen[16];
-extern u32 PSPNativeSasStartGen[16];      /* sim_audio.cpp: bumped by SIM_Audio_StartChannel */
+extern u32 VitaNativeSasStartGen[16];      /* sim_audio.cpp: bumped by SIM_Audio_StartChannel */
 
 #define SAS_GRAIN        256
 #define SAS_RATE         44100
@@ -275,9 +275,9 @@ static void ApplyChannel(int v, const SasChan *c)
             int rv = __sceSasSetVolume(&s_core, v, l, r, 0, 0);
             int rk = __sceSasSetKeyOn(&s_core, v);
             if (type <= 2 && st_hdrLogs < 10) { const u8 *h = c->sad - 12; u16 hrate = (u16)(h[2] | (h[3] << 8)), htimer = (u16)(h[4] | (h[5] << 8)), hls = (u16)(h[6] | (h[7] << 8)); u32 hll = (u32)h[8] | ((u32)h[9] << 8) | ((u32)h[10] << 16) | ((u32)h[11] << 24);
-                PSPNativeMemLog("[AUDIO-SAS] hdr v=%d fmt=%u loopflag=%u rate=%u timer=%u rate*timer=%u loopStart=%u loopLen=%u | chan period=%u pnt=%u len=%u", v, h[0], h[1], hrate, htimer, (u32)hrate * htimer, hls, hll, 0x10000u - c->tmr, c->pnt, c->len); st_hdrLogs++; }
+                VitaNativeMemLog("[AUDIO-SAS] hdr v=%d fmt=%u loopflag=%u rate=%u timer=%u rate*timer=%u loopStart=%u loopLen=%u | chan period=%u pnt=%u len=%u", v, h[0], h[1], hrate, htimer, (u32)hrate * htimer, hls, hll, 0x10000u - c->tmr, c->pnt, c->len); st_hdrLogs++; }
             if (st_keyOns < 12 || rp < 0 || rt < 0 || rv < 0 || rk < 0)
-                PSPNativeMemLog("[AUDIO-SAS] keyon v=%d type=%d count=%u loop=%d pitch=%d vol=%d/%d rc pcm=%08x pitch=%08x vol=%08x key=%08x", v, type, s->count, s->loop, pitch, l, r, rp, rt, rv, rk);
+                VitaNativeMemLog("[AUDIO-SAS] keyon v=%d type=%d count=%u loop=%d pitch=%d vol=%d/%d rc pcm=%08x pitch=%08x vol=%08x key=%08x", v, type, s->count, s->loop, pitch, l, r, rp, rt, rv, rk);
             s_cur[v].keyed = 1; s_cur[v].pitch = pitch; s_cur[v].vl = l; s_cur[v].vr = r;
             st_keyOns++;
         } else {
@@ -312,7 +312,7 @@ static void ConfigureEnvelope(int v)
                         PSP_SAS_ADSR_CURVE_MODE_LINEAR_DECREASE, PSP_SAS_ADSR_CURVE_MODE_DIRECT);
     int r2 = __sceSasSetADSR(&s_core, v, PSP_SAS_ADSR_EVERYTHING, PSP_SAS_ENVELOPE_HEIGHT_MAX, 0, 0, 0);
     int r3 = __sceSasSetSL(&s_core, v, PSP_SAS_ENVELOPE_HEIGHT_MAX);
-    if (v == 0 || r1 < 0 || r2 < 0 || r3 < 0) PSPNativeMemLog("[AUDIO-SAS] envelope voice %d: mode %08x rates %08x sl %08x", v, r1, r2, r3);
+    if (v == 0 || r1 < 0 || r2 < 0 || r3 < 0) VitaNativeMemLog("[AUDIO-SAS] envelope voice %d: mode %08x rates %08x sl %08x", v, r1, r2, r3);
 }
 
 /* ---- audio thread ------------------------------------------------------------------------------- */
@@ -355,37 +355,37 @@ static int SasThread(SceSize args, void *argp)
         { static u32 g; int pk = 0; for (int i = 0; i < SAS_GRAIN * 2; i++) { int a = s_grain[i] < 0 ? -s_grain[i] : s_grain[i]; if (a > pk) pk = a; }
           if (pk > st_peak) st_peak = pk;
           if ((++g % 344) == 0) { int h[32]; __sceSasGetAllEnvelopeHeights(&s_core, h); int keyed = 0; for (int v = 0; v < 16; v++) keyed += s_cur[v].keyed;
-            PSPNativeMemLog("[AUDIO-SAS] grain %u peak %d keyed %d env0 %08x env1 %08x env2 %08x env3 %08x", g, st_peak, keyed, h[0], h[1], h[2], h[3]); st_peak = 0; } }
+            VitaNativeMemLog("[AUDIO-SAS] grain %u peak %d keyed %d env0 %08x env1 %08x env2 %08x env3 %08x", g, st_peak, keyed, h[0], h[1], h[2], h[3]); st_peak = 0; } }
         frac += grainNum; playTime += frac / SAS_RATE; frac %= SAS_RATE;
         st_threadUs += sceKernelGetSystemTimeLow() - t0; st_grains++;
-        sceAudioOutputPannedBlocking(s_audioCh, PSP_AUDIO_VOLUME_MAX, PSP_AUDIO_VOLUME_MAX, s_grain);
+        sceAudioOutputPannedBlocking(s_audioCh, VITAPOKE_AUDIO_VOLUME_MAX, VITAPOKE_AUDIO_VOLUME_MAX, s_grain);
     }
     return 0;
 }
 
-int PSPNativeSasInit(void)
+int VitaNativeSasInit(void)
 {
     int rc = sceUtilityLoadModule(PSP_MODULE_AV_AVCODEC);
-    if (rc < 0 && rc != (int)0x80020139) PSPNativeMemLog("[AUDIO-SAS] load AVCODEC %08x", rc);
+    if (rc < 0 && rc != (int)0x80020139) VitaNativeMemLog("[AUDIO-SAS] load AVCODEC %08x", rc);
     rc = sceUtilityLoadModule(PSP_MODULE_AV_SASCORE);
-    if (rc < 0 && rc != (int)0x80020139) { PSPNativeMemLog("[AUDIO-SAS] load SASCORE failed %08x", rc); return -1; }
+    if (rc < 0 && rc != (int)0x80020139) { VitaNativeMemLog("[AUDIO-SAS] load SASCORE failed %08x", rc); return -1; }
     rc = __sceSasInit(&s_core, SAS_GRAIN, 16, PSP_SAS_OUTPUTMODE_STEREO, SAS_RATE);
-    if (rc < 0) { PSPNativeMemLog("[AUDIO-SAS] __sceSasInit failed %08x", rc); return -1; }
+    if (rc < 0) { VitaNativeMemLog("[AUDIO-SAS] __sceSasInit failed %08x", rc); return -1; }
     for (int v = 0; v < 16; v++) ConfigureEnvelope(v);
-    s_audioCh = sceAudioChReserve(PSP_AUDIO_NEXT_CHANNEL, SAS_GRAIN, PSP_AUDIO_FORMAT_STEREO);
-    if (s_audioCh < 0) { PSPNativeMemLog("[AUDIO-SAS] sceAudioChReserve failed %08x", s_audioCh); return -1; }
+    s_audioCh = sceAudioChReserve(VITAPOKE_AUDIO_NEXT_CHANNEL, SAS_GRAIN, VITAPOKE_AUDIO_FORMAT_STEREO);
+    if (s_audioCh < 0) { VitaNativeMemLog("[AUDIO-SAS] sceAudioChReserve failed %08x", s_audioCh); return -1; }
     s_thread = sceKernelCreateThread("native_sas_out", SasThread, 0x11, 0x4000, PSP_THREAD_ATTR_USER, NULL);
-    if (s_thread < 0) { PSPNativeMemLog("[AUDIO-SAS] thread create failed %08x", s_thread); sceAudioChRelease(s_audioCh); return -1; }
+    if (s_thread < 0) { VitaNativeMemLog("[AUDIO-SAS] thread create failed %08x", s_thread); sceAudioChRelease(s_audioCh); return -1; }
     sceKernelStartThread(s_thread, 0, NULL);
     s_ready = 1;
-    PSPNativeMemLog("[AUDIO-SAS] ready: sceSasCore 16 voices, grain %d @ %d Hz, audio ch %d", SAS_GRAIN, SAS_RATE, s_audioCh);
+    VitaNativeMemLog("[AUDIO-SAS] ready: sceSasCore 16 voices, grain %d @ %d Hz, audio ch %d", SAS_GRAIN, SAS_RATE, s_audioCh);
     return 0;
 }
 
-int PSPNativeSasReady(void) { return s_ready; }
+int VitaNativeSasReady(void) { return s_ready; }
 
 /* Game thread, once per sound pump (after the sequencer and the silent channel advance). */
-void PSPNativeSasSnapshot(u32 cycles)
+void VitaNativeSasSnapshot(u32 cycles)
 {
     s_dsTime += cycles;
     if (!s_ready) return;
@@ -395,12 +395,12 @@ void PSPNativeSasSnapshot(u32 cycles)
     s->time = s_dsTime;
     for (int v = 0; v < 16; v++) {
         s->ch[v].cnt = s_SIM_sndcnt[v]; s->ch[v].sad = s_SIM_sndsad[v]; s->ch[v].tmr = s_SIM_sndtmr[v];
-        s->ch[v].pnt = s_SIM_sndpnt[v]; s->ch[v].len = s_SIM_sndlen[v]; s->ch[v].gen = PSPNativeSasStartGen[v];
+        s->ch[v].pnt = s_SIM_sndpnt[v]; s->ch[v].len = s_SIM_sndlen[v]; s->ch[v].gen = VitaNativeSasStartGen[v];
     }
     s_snapW = w + 1;
 }
 
-void PSPNativeSasStatsLine(char *buf, unsigned len)
+void VitaNativeSasStatsLine(char *buf, unsigned len)
 {
     u32 fill = (s_snapW - s_snapR) & SNAP_MASK;
     snprintf(buf, len, "[AUDIO-SAS] ready=%d fill=%u keyons=%u hits=%u miss=%u conv_kb=%u cache_kb=%u evict=%u halved=%u pitchclamp=%u skipped=%u dropsnap=%u underfeed=%u thread_us_per_grain=%u coreerr=%u",

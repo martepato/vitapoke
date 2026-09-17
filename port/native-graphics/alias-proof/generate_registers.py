@@ -17,8 +17,8 @@ for family in ['G2','G2S','G3','G3X','GX','GXS']:
  assert found==set(decl), (family, set(decl)-found)
 rows=sorted(set(rows),key=lambda r:(r[1],r[0]))
 size=(max(o+w for _,o,w,_ in rows)+63)&~63
-s=['/* Generated from libntr X86 ioreg headers; offsets verified against ARM9. */','.section .bss','.balign 64','.global PSPNative_GfxRegisters','.type PSPNative_GfxRegisters, @object','PSPNative_GfxRegisters:',f'.space {size}',f'.size PSPNative_GfxRegisters, {size}']
-for name,off,width,_ in rows:s += [f'.global {name}',f'.type {name}, @object',f'.set {name}, PSPNative_GfxRegisters + {off}',f'.size {name}, {width}']
+s=['/* Generated from libntr X86 ioreg headers; offsets verified against ARM9. */','.section .bss','.balign 64','.global VitaNative_GfxRegisters','.type VitaNative_GfxRegisters, %object','VitaNative_GfxRegisters:',f'.space {size}',f'.size VitaNative_GfxRegisters, {size}']
+for name,off,width,_ in rows:s += [f'.global {name}',f'.type {name}, %object',f'.set {name}, VitaNative_GfxRegisters + {off}',f'.size {name}, {width}']
 (p/'graphics_registers.S').write_text('\n'.join(s)+'\n')
 (p/'registers.json').write_text(json.dumps(rows,indent=2)+'\n')
 print(f'{len(rows)} graphics symbols share {size} bytes')

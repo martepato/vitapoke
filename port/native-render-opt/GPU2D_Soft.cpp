@@ -402,7 +402,7 @@ void SoftRenderer::DrawScanline(u32 line, Unit* unit)
     for (int i = 0; i < 256; i++)
     {
         u32 c = outputSrc[i];
-#ifdef PSP_NATIVE_RGBA_OUTPUT
+#ifdef VITAPOKE_RGBA_OUTPUT
         c = (c << 2) & 0x00FCFCFC;
 #else
         c = ((c << 18) & 0x00FC0000) | ((c << 2) & 0x0000FC00)

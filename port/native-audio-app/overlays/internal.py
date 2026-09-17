@@ -12,4 +12,4 @@ for src in (b/'internalobjects').glob('*.o'):
  if ren:subprocess.run(['@TOOLBIN@objcopy',*ren,str(dst)],check=True)
 a=p/'libinternal-overlays.a';a.unlink(missing_ok=True);subprocess.run(['@TOOLBIN@ar','rcs',str(a),*[str(x) for x in out.glob('*.o')]],check=True)
 nm=subprocess.check_output(['@TOOLBIN@nm','--defined-only',str(p/'libplatinum-overlays.a')],text=True)
-ctors=sorted(set(re.findall(r'PSPNativeCtor_\d+',nm)));(p/'constructors.flags').write_text(' '.join('-Wl,-u,'+x for x in ctors)+'\n');print('constructor modules',len(ctors),ctors)
+ctors=sorted(set(re.findall(r'VitaNativeCtor_\d+',nm)));(p/'constructors.flags').write_text(' '.join('-Wl,-u,'+x for x in ctors)+'\n');print('constructor modules',len(ctors),ctors)

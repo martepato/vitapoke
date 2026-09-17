@@ -9,7 +9,7 @@ static unsigned rtcReads;
 static int touchMode;static unsigned previous;static BOOL sampling,rtcReady;
 static TPCalibrateParam calibration;
 static const unsigned buttons[12]={PSP_CTRL_CIRCLE,PSP_CTRL_CROSS,PSP_CTRL_SELECT,PSP_CTRL_START,PSP_CTRL_RIGHT,PSP_CTRL_LEFT,PSP_CTRL_UP,PSP_CTRL_DOWN,PSP_CTRL_RTRIGGER,PSP_CTRL_LTRIGGER,PSP_CTRL_TRIANGLE,PSP_CTRL_SQUARE};
-void PSPNativeInputStep(unsigned bits,unsigned ax,unsigned ay){
+void VitaNativeInputStep(unsigned bits,unsigned ax,unsigned ay){
  unsigned combo=PSP_CTRL_SELECT|PSP_CTRL_CROSS,keys=0;
  /* R toggles stylus mode (as on Platinum); SELECT+CROSS still works. R is not forwarded to the game. */
  if((bits&PSP_CTRL_RTRIGGER)&&!(previous&PSP_CTRL_RTRIGGER))touchMode=!touchMode;
@@ -41,17 +41,17 @@ static void ReplayInit(void){
  if(!replayCount||replay[0].frame!=0||trailing!=EOF){puts("[SS-INPUT] malformed or oversized replay fixture");abort();}
  fclose(f);replayEnabled=1;printf("[SS-INPUT] isolated replay enabled: %u transitions\n",replayCount);
 }
-extern int PSPNativeOskIsActive(void);
+extern int VitaNativeOskIsActive(void);
 /* The firmware keyboard owns the pad while it is up: the game sees released buttons. */
-void PSPNativeInputPoll(void){
- if(PSPNativeOskIsActive()){PSPNativeInputStep(0,128,128);return;}
+void VitaNativeInputPoll(void){
+ if(VitaNativeOskIsActive()){VitaNativeInputStep(0,128,128);return;}
  if(!replayChecked)ReplayInit();
  if(replayEnabled){while(replayIndex+1<replayCount&&replay[replayIndex+1].frame<=replayFrame)replayIndex++;
   struct ReplayEvent *e=&replay[replayIndex];if(e->frame==replayFrame)printf("[SS-INPUT] frame=%u buttons=%08x analog=%u,%u\n",replayFrame,e->bits,e->x,e->y);
-  PSPNativeInputStep(e->bits,e->x,e->y);replayFrame++;return;
+  VitaNativeInputStep(e->bits,e->x,e->y);replayFrame++;return;
  }
- SceCtrlData pad;if(sceCtrlPeekBufferPositive(&pad,1)<0){printf("[INPUT] PSP pad read failed\n");abort();}PSPNativeInputStep(pad.Buttons,pad.Lx,pad.Ly);}
-void TP_Init(void){sceCtrlSetSamplingCycle(0);sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);touchMode=0;previous=0;sampling=FALSE;point=(TPData){128,96,0,TP_VALIDITY_VALID};PSPNativeInputStep(0,128,128);}
+ SceCtrlData pad;if(sceCtrlPeekBufferPositive(&pad,1)<0){printf("[INPUT] PSP pad read failed\n");abort();}VitaNativeInputStep(pad.Buttons,pad.Lx,pad.Ly);}
+void TP_Init(void){sceCtrlSetSamplingCycle(0);sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);touchMode=0;previous=0;sampling=FALSE;point=(TPData){128,96,0,TP_VALIDITY_VALID};VitaNativeInputStep(0,128,128);}
 BOOL TP_GetUserInfo(TPCalibrateParam*p){if(!p)return FALSE;*p=(TPCalibrateParam){0,0,256,256};return TRUE;}
 void TP_SetCalibrateParam(const TPCalibrateParam*p){if(!p||p->x0||p->y0||p->xDotSize!=256||p->yDotSize!=256){printf("[INPUT] unsupported non-identity touch calibration\n");abort();}calibration=*p;}
 void TP_GetCalibratedPoint(TPData*out,const TPData*raw){if(!out||!raw)abort();*out=*raw;}
@@ -74,10 +74,10 @@ RTCResult RTC_GetDateTimeAsync(RTCDate*d,RTCTime*t,RTCCallback cb,void*arg){
  *t=(RTCTime){now.hour,now.minute,now.second};rtcReads++;cb(RTC_RESULT_SUCCESS,arg);return RTC_RESULT_SUCCESS;
 }
 
-unsigned PSPNativeRTCReadCount(void){return rtcReads;}
-int PSPNativeInputQuitRequested(void){unsigned combo=PSP_CTRL_LTRIGGER|PSP_CTRL_RTRIGGER|PSP_CTRL_SELECT;return (previous&combo)==combo;}
+unsigned VitaNativeRTCReadCount(void){return rtcReads;}
+int VitaNativeInputQuitRequested(void){unsigned combo=PSP_CTRL_LTRIGGER|PSP_CTRL_RTRIGGER|PSP_CTRL_SELECT;return (previous&combo)==combo;}
 
-void PSPNativeInputGetRenderState(unsigned*keys,int*mode,int*down,int*x,int*y){if(keys)*keys=PAD_Read();if(mode)*mode=touchMode;if(down)*down=point.touch;if(x)*x=point.x;if(y)*y=point.y;}
+void VitaNativeInputGetRenderState(unsigned*keys,int*mode,int*down,int*x,int*y){if(keys)*keys=PAD_Read();if(mode)*mode=touchMode;if(down)*down=point.touch;if(x)*x=point.x;if(y)*y=point.y;}
 
 static TPData *autoBuffer;
 static u16 autoCount,autoFrequency,autoIndex;
@@ -93,7 +93,7 @@ void TP_WaitBusy(TPRequestCommandFlag flags){(void)flags;/* PSP control requests
 u32 TP_CheckError(TPRequestCommandFlag flags){(void)flags;return autoError;}
 u16 TP_GetLatestIndexInAuto(void){return autoIndex;}
 void TP_GetLatestRawPointInAuto(TPData*out){if(!out||!autoBuffer)abort();*out=autoBuffer[autoIndex];}
-void PSPNativeInputVBlank(void){if(autoBuffer)for(u16 i=0;i<autoFrequency;i++){autoIndex=(autoIndex+1)%autoCount;autoBuffer[autoIndex]=point;}}
+void VitaNativeInputVBlank(void){if(autoBuffer)for(u16 i=0;i<autoFrequency;i++){autoIndex=(autoIndex+1)%autoCount;autoBuffer[autoIndex]=point;}}
 static void RTCResultStore(RTCResult value,void*p){*(RTCResult*)p=value;}
 RTCResult RTC_GetDateTime(RTCDate*d,RTCTime*t){RTCResult result=RTC_RESULT_FATAL_ERROR;RTCResult request=RTC_GetDateTimeAsync(d,t,RTCResultStore,&result);return request==RTC_RESULT_SUCCESS?result:request;}
 RTCResult RTC_GetDate(RTCDate*d){RTCTime t;return RTC_GetDateTime(d,&t);}

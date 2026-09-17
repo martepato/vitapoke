@@ -11,7 +11,7 @@
 #include "pokemon.h"
 #include "constants/pokemon.h"
 
-extern void PSPNativeMemLog(const char *fmt, ...);
+extern void VitaNativeMemLog(const char *fmt, ...);
 extern BOOL __real_HandleDaycareStep(Daycare *dayCare, Party *party, FieldSystem *fieldSystem);
 
 BOOL __wrap_HandleDaycareStep(Daycare *dayCare, Party *party, FieldSystem *fieldSystem)
@@ -25,7 +25,7 @@ BOOL __wrap_HandleDaycareStep(Daycare *dayCare, Party *party, FieldSystem *field
                 u32 zero = 0;
                 SetMonData(mon, MON_DATA_EGG_CYCLES, &zero);
                 done = 1;
-                PSPNativeMemLog("[DIAG] hatch now: party slot %d species %u", i,
+                VitaNativeMemLog("[DIAG] hatch now: party slot %d species %u", i,
                                 (unsigned)GetMonData(mon, MON_DATA_SPECIES, NULL));
                 printf("[DIAG] hatch now: party slot %d\n", i);
                 return TRUE; /* FieldSystem_UpdateDaycare then starts std_hatch_egg */

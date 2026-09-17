@@ -110,11 +110,11 @@ void StartScreenFade(enum FadeMode mode, enum FadeType typeMain, enum FadeType t
        wipe routines are ported, an unimplemented type becomes the brightness fade in
        the same direction (even = out, odd = in), so the game keeps going. */
     {
-        extern void PSPNativeMemLog(const char *, ...);
+        extern void VitaNativeMemLog(const char *, ...);
         enum FadeType origMain = typeMain, origSub = typeSub;
         if ((unsigned)typeMain >= 10 || !sScreenFadeFuncs[typeMain]) typeMain = (typeMain & 1) ? FADE_TYPE_BRIGHTNESS_IN : FADE_TYPE_BRIGHTNESS_OUT;
         if ((unsigned)typeSub >= 10 || !sScreenFadeFuncs[typeSub]) typeSub = (typeSub & 1) ? FADE_TYPE_BRIGHTNESS_IN : FADE_TYPE_BRIGHTNESS_OUT;
-        if (origMain != typeMain || origSub != typeSub) PSPNativeMemLog("[SS-FADE] wipe type %d/%d not ported: brightness %d/%d used", (int)origMain, (int)origSub, (int)typeMain, (int)typeSub);
+        if (origMain != typeMain || origSub != typeSub) VitaNativeMemLog("[SS-FADE] wipe type %d/%d not ported: brightness %d/%d used", (int)origMain, (int)origSub, (int)typeMain, (int)typeSub);
     }
     GF_ASSERT((unsigned)typeMain < 10 && (unsigned)typeSub < 10);
     GF_ASSERT(sScreenFadeFuncs[typeMain] && sScreenFadeFuncs[typeSub]);

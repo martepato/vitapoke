@@ -7,20 +7,37 @@
 #include <nitro/hw/X86/mmap_main.h>
 #include <simulator/assert.h>
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-/* native-app-crash diagnostic: refuse DMA emulation on pointers outside PSP user RAM/VRAM/scratchpad.
-   Such a copy would be a host SIGSEGV in PPSSPPHeadless (no exception handler) and a bus error on hardware. */
+
+extern void VitaNativeFatal(const char *message);
+/* The DS's DMA, as a memcpy, with a check on the pointers.
+ *
+ * The DS hands DMA a raw address and the hardware writes wherever it is told. Game code that passes
+ * a bad one gets silent corruption on a DS, and the PSP build guarded against that by checking the
+ * address against that console's memory map -- its 64 MB of user RAM, its VRAM, its scratchpad -- and
+ * refusing anything outside.
+ *
+ * That table cannot be carried over, and should not be: this port's memory is wherever the Vita's
+ * allocator put it, which is not a fixed range and not knowable from an address alone. What is left
+ * is the check that still means something -- a pointer that cannot be valid at all -- plus the size
+ * check below, which is the one that catches a misinterpreted DS structure. A genuinely bad pointer
+ * that gets past this faults on the spot, with an address and the log's last line to place it, which
+ * is a better failure than the PSP's was.
+ */
 static int MIi_NativeRangeOk(const void *p, u32 size, const char *what, const char *fn, void *ra)
 {
-    u32 a = (u32)p & ~0x40000000u;
-    u64 e = (u64)a + size;
-    int ok = (a >= 0x08000000u && e <= 0x0C000000u) || (a >= 0x04000000u && e <= 0x04200000u) || (a >= 0x00010000u && e <= 0x00014000u);
-    if (!ok) {
-        printf("[MI-DMA] %s: %s=%08x size=%u ra=%08x invalid (unmapped PSP address)\n", fn, what, (u32)p, size, (u32)ra);
-        abort(); /* Never report a successful transfer after discarding it. */
+    if ((uintptr_t)p >= 0x1000u) {
+        return 1;
     }
-    return ok;
+    {
+        char message[128];
+        snprintf(message, sizeof message, "%s: %s=%p size=%u from %p is not a usable address",
+                 fn, what, p, (unsigned)size, ra);
+        VitaNativeFatal(message);   /* never report a transfer that was discarded */
+    }
+    return 0;
 }
 #define MIi_GUARD2(src, dest, size) (MIi_NativeRangeOk((const void*)(src), (size), "src", __func__, __builtin_return_address(0)) & MIi_NativeRangeOk((const void*)(dest), (size), "dest", __func__, __builtin_return_address(0)))
 #define MIi_GUARD1(dest, size) MIi_NativeRangeOk((const void*)(dest), (size), "dest", __func__, __builtin_return_address(0))

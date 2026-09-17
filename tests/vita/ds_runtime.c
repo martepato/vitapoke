@@ -64,8 +64,8 @@ static void Check(const char *name, int ok, const char *detail)
 }
 
 /* port/vita expects these from the application. */
-void PSPNativeMemLog(const char *fmt, ...) { (void)fmt; }
-void PSPNativeFatal(const char *message)
+void VitaNativeMemLog(const char *fmt, ...) { (void)fmt; }
+void VitaNativeFatal(const char *message)
 {
 	/* A fatal from inside the platform layer is itself a result worth reporting, so record it and
 	 * flush before giving up rather than vanishing. */

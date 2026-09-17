@@ -86,6 +86,6 @@ void AreaDataManager_Load(AreaDataManager *a,void *unkC0,MapPropAnimationManager
  G3X_SetEdgeColorTable(a->area.lighting?ssdata_overlay_01_021FB878_ov01_02208BB0:ssdata_overlay_01_021FB878_ov01_02208BA0);
  a->materialShape=(AreaDataManager_Sub8AC *)ov01_021EA724();
  ov01_021EA73C(a->area.resourceKind?ssdata_overlay_01_021FB878_ov01_02209A88:ssdata_overlay_01_021FB878_ov01_02209AB4,(UnkStruct_Ov01_021EA6C4 *)a->materialShape);
- {extern void PSPNativeMemLog(const char*,...);PSPNativeMemLog("[SS-AREA] loaded models=%u maptex=%u props=%u",load->count,a->area.textures,a->area.props);}
+ {extern void VitaNativeMemLog(const char*,...);VitaNativeMemLog("[SS-AREA] loaded models=%u maptex=%u props=%u",load->count,a->area.textures,a->area.props);}
  Heap_Free(load);a->load=NULL;
 }

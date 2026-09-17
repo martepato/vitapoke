@@ -31,11 +31,32 @@ REGType16v s_reg_PAD_KEYINPUT;
 u32 s_HW_INTR_CHECK_BUF;
 REGType32v s_reg_OS_IF;
 
-void PSPNativeMemLog(const char *fmt, ...) { (void)fmt; }
-void PSPNativeFatal(const char *message) { (void)message; abort(); }
+/* The DS's cartridge lock word, which the real build's register backing provides. */
+u8 s_HW_MAIN_MEM_SHARED[HW_MAIN_MEM_SHARED_SIZE];
 
-/* Supplied by the renderer, which does not exist yet. */
-void VitaNativeVBlankWait(void) {}
+/* The sound engine's switch, which the DS mixer defines in the real build. */
+int VitaNativeSoundSilent = 1;
+
+/* The renderer's, which this check does not link. */
+unsigned VitaNativeRenderFrameCount(void) { return 0; }
+
+/* What the platform layer offers the application. These live in port/vita and are declared where
+ * their users are, so they are declared here too rather than pulling the application in. */
+void VitaNativeVBlankReset(void);
+unsigned long long VitaNativeVBlankIdleTake(void);
+unsigned VitaNativeVBlankWaitsTake(void);
+void VitaNativeVBlankFrameComplete(void);
+void VitaNativeStackProbeInit(void);
+unsigned VitaNativeStackHighWater(unsigned *total);
+void VitaNativeMemReport(const char *tag);
+void VitaNativeMemPoll(void);
+int VitaNativeAudioOutReady(void);
+unsigned VitaNativeAudioOutFill(void);
+unsigned VitaNativeAudioOutTargetFill(void);
+unsigned VitaNativeAudioOutCapacity(void);
+void VitaNativeAudioOutWrite(const short *interleaved, unsigned frames);
+void VitaNativeAudioOutStats(unsigned *fill, unsigned *underruns, unsigned *dropped, unsigned *written);
+void VitaNativeAudioOutShutdown(void);
 
 static void ThreadBody(void *arg) { (void)arg; }
 static void AlarmHandler(void *arg) { (void)arg; }
@@ -180,6 +201,93 @@ int main(void)
 		VitaNativeInputVBlank();
 		VitaNativeInputGetRenderState(&keys, &down, &x, &y);
 		(void)VitaNativeRTCReadCount();
+	}
+
+	/* Message queues and mutexes: the DS primitives the sound engine and the game use between
+	 * threads, and the cache maintenance the DS needed before its hardware read memory. */
+	{
+		OSMessageQueue queue;
+		OSMessage slots[4], message;
+		OSMutex mutex;
+
+		OS_InitMessageQueue(&queue, slots, 4);
+		(void)OS_SendMessage(&queue, (OSMessage)0, OS_MESSAGE_NOBLOCK);
+		(void)OS_JamMessage(&queue, (OSMessage)0, OS_MESSAGE_NOBLOCK);
+		(void)OS_ReadMessage(&queue, &message, OS_MESSAGE_NOBLOCK);
+		(void)OS_ReceiveMessage(&queue, &message, OS_MESSAGE_NOBLOCK);
+		OS_InitMutex(&mutex);
+		(void)OS_TryLockMutex(&mutex);
+		OS_UnlockMutex(&mutex);
+		OS_LockMutex(&mutex);
+		OS_UnlockMutex(&mutex);
+		DC_FlushRange(slots, sizeof slots);
+		DC_StoreRange(slots, sizeof slots);
+		DC_InvalidateRange(slots, sizeof slots);
+		DC_FlushAll();
+		DC_WaitWriteBufferEmpty();
+		(void)OS_IsRunOnEmulator();
+		OS_SpinWait(1);
+	}
+
+	/* The firmware profile and the cartridge arbitration. */
+	{
+		OSOwnerInfo owner;
+		u8 mac[6];
+		s32 id;
+
+		OS_GetOwnerInfo(&owner);
+		(void)OS_GetOwnerRtcOffset();
+		OS_GetMacAddress(mac);
+		id = OS_GetLockID();
+		if (id > 0) {
+			(void)OS_TryLockCartridge((u16)id);
+			(void)OS_UnlockCartridge((u16)id);
+			(void)OS_UnLockCartridge((u16)id);
+			OS_ReleaseLockID((u16)id);
+		}
+	}
+
+	/* The save memory. Nothing is opened, so every request answers "no response". */
+	{
+		(void)CARD_IdentifyBackup(CARD_BACKUP_TYPE_FLASH_4MBITS);
+		(void)CARD_GetBackupTotalSize();
+		(void)CARD_GetBackupSectorSize();
+		(void)CARD_GetBackupPageSize();
+		(void)CARD_GetResultCode();
+		(void)CARD_TryWaitBackupAsync();
+		(void)CARD_WaitBackupAsync();
+		CARD_CancelBackupAsync();
+		(void)CARDi_RequestStreamCommand(0, 0, 0, NULL, NULL, FALSE, CARD_REQ_READ_BACKUP,
+		                                 0, CARD_REQUEST_MODE_RECV);
+	}
+
+	/* The vertical blank, the log and what the frame driver reads from them. */
+	{
+		VitaNativeVBlankReset();
+		(void)VitaNativeVBlankIdleTake();
+		(void)VitaNativeVBlankWaitsTake();
+		VitaNativeVBlankFrameComplete();
+		VitaNativeStackProbeInit();
+		{
+			unsigned total;
+			(void)VitaNativeStackHighWater(&total);
+		}
+		VitaNativeMemReport("checks");
+		VitaNativeMemPoll();
+	}
+
+	/* The audio output. Opening the port is the one thing that needs hardware, so it is not called;
+	 * everything the sound engine asks of it around that is. */
+	{
+		unsigned fill, under, dropped, written;
+
+		(void)VitaNativeAudioOutReady();
+		(void)VitaNativeAudioOutFill();
+		(void)VitaNativeAudioOutTargetFill();
+		(void)VitaNativeAudioOutCapacity();
+		VitaNativeAudioOutWrite(NULL, 0);
+		VitaNativeAudioOutStats(&fill, &under, &dropped, &written);
+		VitaNativeAudioOutShutdown();
 	}
 
 	return 0;

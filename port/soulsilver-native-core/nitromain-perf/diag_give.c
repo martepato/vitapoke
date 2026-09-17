@@ -24,7 +24,7 @@
 #include "save_vars_flags.h"
 #include "sys_vars.h"
 
-extern void PSPNativeMemLog(const char *fmt, ...);
+extern void VitaNativeMemLog(const char *fmt, ...);
 extern BOOL __real_HandleDaycareStep(Daycare *dayCare, Party *party, FieldSystem *fieldSystem);
 #ifndef GIVE_LEVEL
 #define GIVE_LEVEL 10
@@ -41,7 +41,7 @@ static void DiagGiveSpecies(Party *party, FieldSystem *fieldSystem)
          * hit GF_ASSERT in CopyU16ArrayToString via BufferBoxMonOTName. */
         GiveMon(HEAP_ID_FIELD3, FieldSystem_GetSaveData(fieldSystem), GIVE_SPECIES, GIVE_LEVEL, 0, 0, 0,
                 MapHeader_GetMapSec(fieldSystem->location->mapId), 24);
-        PSPNativeMemLog("[DIAG] gave species %d level %d (party now %d)", GIVE_SPECIES, GIVE_LEVEL, Party_GetCount(party));
+        VitaNativeMemLog("[DIAG] gave species %d level %d (party now %d)", GIVE_SPECIES, GIVE_LEVEL, Party_GetCount(party));
         printf("[DIAG] gave species %d level %d\n", GIVE_SPECIES, GIVE_LEVEL);
     }
 }
@@ -55,7 +55,7 @@ static void DiagGiveItems(FieldSystem *fieldSystem)
     Bag *bag = Save_Bag_Get(FieldSystem_GetSaveData(fieldSystem));
     for (unsigned i = 0; i < sizeof(items) / sizeof(items[0]); i++) {
         BOOL ok = Bag_AddItem(bag, items[i], 1, HEAP_ID_FIELD3);
-        PSPNativeMemLog("[DIAG] gave item %d -> %d", items[i], ok);
+        VitaNativeMemLog("[DIAG] gave item %d -> %d", items[i], ok);
         printf("[DIAG] gave item %d -> %d\n", items[i], ok);
     }
 }
@@ -68,7 +68,7 @@ static void DiagGiveBadges(FieldSystem *fieldSystem)
     for (int b = 0; b < 16; b++) {
         if ((GIVE_BADGES) & (1 << b)) PlayerProfile_SetBadgeFlag(profile, b);
     }
-    PSPNativeMemLog("[DIAG] badges mask 0x%x (count now %d)", (unsigned)(GIVE_BADGES), PlayerProfile_CountBadges(profile));
+    VitaNativeMemLog("[DIAG] badges mask 0x%x (count now %d)", (unsigned)(GIVE_BADGES), PlayerProfile_CountBadges(profile));
     printf("[DIAG] badges mask 0x%x\n", (unsigned)(GIVE_BADGES));
 }
 #endif
@@ -85,7 +85,7 @@ static void DiagGiveItemIds(FieldSystem *fieldSystem)
         if (*s == ',') s++;
         if (item <= 0 || count <= 0) continue;
         BOOL ok = Bag_AddItem(bag, (u16)item, (u16)count, HEAP_ID_FIELD3);
-        PSPNativeMemLog("[DIAG] gave item %d x%d -> %d", item, count, ok);
+        VitaNativeMemLog("[DIAG] gave item %d x%d -> %d", item, count, ok);
         printf("[DIAG] gave item %d x%d -> %d\n", item, count, ok);
     }
 }
@@ -101,7 +101,7 @@ static void DiagSetVars(FieldSystem *fieldSystem)
         long value = strtol(s, (char **)&s, 0); if (*s == ',') s++;
         if (var < 0x4000 || var > 0xFFFF) continue;
         BOOL ok = SetScriptVar(varsFlags, (u16)var, (u16)value);
-        PSPNativeMemLog("[DIAG] set var 0x%04lx = %ld -> %d", var, value, ok);
+        VitaNativeMemLog("[DIAG] set var 0x%04lx = %ld -> %d", var, value, ok);
         printf("[DIAG] set var 0x%04lx = %ld -> %d\n", var, value, ok);
     }
 }
@@ -117,7 +117,7 @@ static void DiagFlags(FieldSystem *fieldSystem, const char *s, BOOL set)
         if (set) Save_VarsFlags_SetFlagInArray(varsFlags, (u16)flag);
         else Save_VarsFlags_ClearFlagInArray(varsFlags, (u16)flag);
         BOOL now = Save_VarsFlags_CheckFlagInArray(varsFlags, (u16)flag);
-        PSPNativeMemLog("[DIAG] %s flag 0x%04lx -> now %d", set ? "set" : "clear", flag, now);
+        VitaNativeMemLog("[DIAG] %s flag 0x%04lx -> now %d", set ? "set" : "clear", flag, now);
         printf("[DIAG] %s flag 0x%04lx -> now %d\n", set ? "set" : "clear", flag, now);
     }
 }
@@ -142,7 +142,7 @@ static void DiagTeachMoves(Party *party)
         if (dst == -2) continue;
         if (dst == -1) dst = nextOverwrite[slot] > 0 ? nextOverwrite[slot]-- : 0; /* overwrite 3,2,1,0 */
         MonSetMoveInSlot(mon, (u16)move, (u8)dst);
-        PSPNativeMemLog("[DIAG] party slot %d move slot %d = move %d (pp %u)", slot, dst, move,
+        VitaNativeMemLog("[DIAG] party slot %d move slot %d = move %d (pp %u)", slot, dst, move,
                         (unsigned)GetMonData(mon, MON_DATA_MOVE1_PP + dst, NULL));
         printf("[DIAG] party slot %d move slot %d = move %d\n", slot, dst, move);
     }
@@ -158,7 +158,7 @@ static void DiagFriendship(Party *party)
         int f = GIVE_FRIENDSHIP;
         SetMonData(mon, MON_DATA_FRIENDSHIP, &f);
     }
-    PSPNativeMemLog("[DIAG] friendship %d on %d party mons", GIVE_FRIENDSHIP, n);
+    VitaNativeMemLog("[DIAG] friendship %d on %d party mons", GIVE_FRIENDSHIP, n);
     printf("[DIAG] friendship %d on %d party mons\n", GIVE_FRIENDSHIP, n);
 }
 #endif
@@ -170,7 +170,7 @@ static void DiagRepel(FieldSystem *fieldSystem)
     RoamerSaveData *roamerSave = Save_Roamers_Get(FieldSystem_GetSaveData(fieldSystem));
     *RoamerSave_GetRepelAddr(roamerSave) = REPEL_STEPS;
     roamerSave->unk_66 = REPEL_FULL;
-    PSPNativeMemLog("[DIAG] repel steps %d full %d", REPEL_STEPS, REPEL_FULL);
+    VitaNativeMemLog("[DIAG] repel steps %d full %d", REPEL_STEPS, REPEL_FULL);
     printf("[DIAG] repel steps %d full %d\n", REPEL_STEPS, REPEL_FULL);
 }
 #endif

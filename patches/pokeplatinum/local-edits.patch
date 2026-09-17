@@ -77,3 +77,15 @@ index e02f512..c181c85 100644
      { UndergroundCommon_Text_Greet, (u32)UndergroundTalk_OfferExchangeTrainerCases },
      { UndergroundCommon_Text_Question, (u32)UndergroundTalk_StartAskingQuestions },
      { UndergroundCommon_Text_GiveGoods, (u32)UndergroundTalk_OpenGiveGiftMenu },
+diff --git a/lib/ppwlobby/include/ilobby/dwci_lobbybase.h b/lib/ppwlobby/include/ilobby/dwci_lobbybase.h
+--- a/lib/ppwlobby/include/ilobby/dwci_lobbybase.h
++++ b/lib/ppwlobby/include/ilobby/dwci_lobbybase.h
+@@ -83,7 +83,7 @@
+ 
+     size_type max_size() const throw()
+     {
+-        return std::numeric_limits<std::size_t>::max() / sizeof(T);
++        return (std::numeric_limits<std::size_t>::max)() / sizeof(T);
+     }
+ 
+     pointer allocate(size_type param0, const void *param1 = 0)

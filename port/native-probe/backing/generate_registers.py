@@ -17,9 +17,9 @@ for family in ['CP','MI','OS','PAD','PXI','SND','SPI']:
   clusters[-1].append(row)
  size=0
  for j,cluster in enumerate(clusters):
-  base=min(x[1] for x in cluster)&~63;extent=(max(o+w for _,o,w,_ in cluster)-base+63)&~63;size+=extent;symbol='PSPNative_'+family+'Registers'+str(j)
-  asm+=['.balign 64','.global '+symbol,'.type '+symbol+',@object',symbol+':',f'.space {extent}',f'.size {symbol},{extent}']
-  for name,off,width,_ in cluster:asm += [f'.global {name}',f'.type {name},@object',f'.set {name},{symbol}+{off-base}',f'.size {name},{width}'];allnames.add(name)
+  base=min(x[1] for x in cluster)&~63;extent=(max(o+w for _,o,w,_ in cluster)-base+63)&~63;size+=extent;symbol='VitaNative_'+family+'Registers'+str(j)
+  asm+=['.balign 64','.global '+symbol,'.type '+symbol+',%object',symbol+':',f'.space {extent}',f'.size {symbol},{extent}']
+  for name,off,width,_ in cluster:asm += [f'.global {name}',f'.type {name},%object',f'.set {name},{symbol}+{off-base}',f'.size {name},{width}'];allnames.add(name)
  rows+=subset
  out=p/'include/nitro/hw/X86'/path.name;out.parent.mkdir(parents=True,exist_ok=True);s,n=re.subn(r'(#define\s+REG_\w+_ADDR\s+)\(&?(s_reg_\w+)\)',r'\1((u64)(uintptr_t)&\2)',s);out.write_text('#include <stdint.h>\n'+s)
  print(family,len(subset),size)

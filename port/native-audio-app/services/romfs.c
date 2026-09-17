@@ -1,19 +1,21 @@
-// Read-only native PSP NitroFS backend. All ROM handles are opened "rb".
+// Read-only NitroFS backend: the game's file system, served out of the ROM on the memory card.
+// All ROM handles are opened "rb".
 #include <nitro/fs.h>
 #include <nitro/card.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-extern void PSPNativeMemLog(const char*fmt,...);
+extern void VitaNativeMemLog(const char*fmt,...);
 static char romPath[512]="Platinum.nds";
 /* One shared stdio handle for the whole ROM.
  *
  * Every FS_OpenFile* used to fopen() the 128 MB ROM again, so the number of DS
  * "files" the game holds open at once became the number of host descriptors
- * held open at once. PPSSPP does not care; a real PSP has a small, hard limit
- * on simultaneously open Memory Stick files, and past it fopen() simply fails
- * and the caller gets a file it thinks is valid. Entering the field map opens
+ * held open at once. A console has a small, hard limit on simultaneously open
+ * files on its memory card, and past it fopen() simply fails and the caller
+ * gets a file it thinks is valid. (The PSP build found this the hard way, on
+ * hardware: an emulator does not care.) Entering the field map opens
  * more archives at once than any earlier scene, which matches where hardware
  * dies. Each FSFile now carries only its own position and seeks before it
  * reads, so the descriptor count is one no matter how many files are open. */
@@ -82,25 +84,33 @@ static s32 RomCachedRead(u32 pos,void*dst,u32 len){
 #endif
 static u16 U16(const void*p){const u8*b=p;return b[0]|((u16)b[1]<<8);}
 static u32 U32(const void*p){const u8*b=p;return U16(b)|((u32)U16(b+2)<<16);}
-BOOL PSPNativeRomFS_SetPath(const char*path){if(ready||!path||strlen(path)>=sizeof(romPath))return FALSE;strcpy(romPath,path);return TRUE;}
+BOOL VitaNativeRomFS_SetPath(const char*path){if(ready||!path||strlen(path)>=sizeof(romPath))return FALSE;strcpy(romPath,path);return TRUE;}
 void FS_End(void){free(tables);tables=fat=fnt=NULL;ready=FALSE;if(romStream){fclose(romStream);romStream=NULL;}
 #ifdef OPT_ROM_CACHE
  for(int i=0;i<ROM_CACHE_BLOCKS;i++)romCacheTag[i]=CACHE_EMPTY;
 #endif
  memset(&archive,0,sizeof(archive));}
+/* Open the ROM and read its two file tables.
+ *
+ * Every rejection here says why. The game's own reaction to a file system that did not start is to
+ * stop dead (CheckForMemoryTampering calls OS_Terminate), which tells whoever is holding the console
+ * nothing at all; these lines are the difference between "it does not work" and "your dump is
+ * truncated". */
+#define FS_REJECT(...) do { VitaNativeMemLog("[ROMFS] " __VA_ARGS__); } while (0)
+
 void FS_Init(u32 channel){
  dma=channel;if(ready)return;
- FILE*stream=fopen(romPath,"rb");if(!stream)return;
- if(fseek(stream,0,SEEK_END)){fclose(stream);return;}
- long length=ftell(stream);if(length<512){fclose(stream);return;}romSize=(u32)length;
- if(fseek(stream,0,SEEK_SET)||fread(header,1,512,stream)!=512){fclose(stream);return;}
+ FILE*stream=fopen(romPath,"rb");if(!stream){FS_REJECT("cannot open %s",romPath);return;}
+ if(fseek(stream,0,SEEK_END)){fclose(stream);FS_REJECT("cannot seek in %s",romPath);return;}
+ long length=ftell(stream);if(length<512){fclose(stream);FS_REJECT("%s is %ld bytes: too short to be a DS ROM",romPath,length);return;}romSize=(u32)length;
+ if(fseek(stream,0,SEEK_SET)||fread(header,1,512,stream)!=512){fclose(stream);FS_REJECT("cannot read the header of %s",romPath);return;}
  u32 fo=U32(header+0x40),ao=U32(header+0x48);fntSize=U32(header+0x44);fatSize=U32(header+0x4c);
- if(fntSize<8||fntSize>16*1024*1024||!fatSize||fatSize>65536*8||(fatSize&7)||(uint64_t)fo+fntSize>romSize||(uint64_t)ao+fatSize>romSize){fclose(stream);return;}
- tables=malloc(fatSize+fntSize);if(!tables){fclose(stream);return;}fat=tables;fnt=tables+fatSize;
- if(fseek(stream,ao,SEEK_SET)||fread(fat,1,fatSize,stream)!=fatSize||fseek(stream,fo,SEEK_SET)||fread(fnt,1,fntSize,stream)!=fntSize){fclose(stream);FS_End();return;}
+ if(fntSize<8||fntSize>16*1024*1024||!fatSize||fatSize>65536*8||(fatSize&7)||(uint64_t)fo+fntSize>romSize||(uint64_t)ao+fatSize>romSize){fclose(stream);FS_REJECT("file tables out of range: names at %lu+%lu, files at %lu+%lu, ROM is %lu bytes",(unsigned long)fo,(unsigned long)fntSize,(unsigned long)ao,(unsigned long)fatSize,(unsigned long)romSize);return;}
+ tables=malloc(fatSize+fntSize);if(!tables){fclose(stream);FS_REJECT("out of memory for %lu bytes of file tables",(unsigned long)(fatSize+fntSize));return;}fat=tables;fnt=tables+fatSize;
+ if(fseek(stream,ao,SEEK_SET)||fread(fat,1,fatSize,stream)!=fatSize||fseek(stream,fo,SEEK_SET)||fread(fnt,1,fntSize,stream)!=fntSize){fclose(stream);FS_End();FS_REJECT("%s ends inside its own file tables",romPath);return;}
  dirCount=U16(fnt+6);romStream=stream;
- if(!dirCount||dirCount>4096||dirCount*8>fntSize){FS_End();return;}
- for(u32 i=0;i<fatSize;i+=8)if(U32(fat+i)>U32(fat+i+4)||U32(fat+i+4)>romSize){FS_End();return;}
+ if(!dirCount||dirCount>4096||dirCount*8>fntSize){FS_End();FS_REJECT("the name table claims %lu directories in %lu bytes",(unsigned long)dirCount,(unsigned long)fntSize);return;}
+ for(u32 i=0;i<fatSize;i+=8)if(U32(fat+i)>U32(fat+i+4)||U32(fat+i+4)>romSize){FS_End();FS_REJECT("file %lu runs from %lu to %lu, outside a %lu byte ROM",(unsigned long)(i/8),(unsigned long)U32(fat+i),(unsigned long)U32(fat+i+4),(unsigned long)romSize);return;}
  memset(&archive,0,sizeof(archive));memcpy(archive.name.ptr,"rom",4);
  archive.fat=archive.fat_bak=ao;archive.fnt=archive.fnt_bak=fo;archive.fat_size=fatSize;archive.fnt_size=fntSize;
  archive.flag=FS_ARCHIVE_FLAG_REGISTER|FS_ARCHIVE_FLAG_LOADED;currentDir=0xf000;ready=TRUE;
@@ -145,8 +155,8 @@ static BOOL Resolve(const char*path,BOOL directory,u32*result){
 BOOL FS_ConvertPathToFileID(FSFileID*id,const char*path){u32 result;if(!id||!Resolve(path,FALSE,&result))return FALSE;id->arc=&archive;id->file_id=result;return TRUE;}
 BOOL FS_OpenFileDirect(FSFile*f,FSArchive*a,u32 top,u32 bottom,u32 index){
  if(!ready||!f||f->pcFilePtr||a!=&archive||top>bottom||bottom>romSize)return FALSE;
- if(!romStream){openFailures++;PSPNativeMemLog("[ROMFS] no rom stream (open #%u) index=%u",openFailures,(unsigned)index);return FALSE;}
- openFiles++;if(openFiles>openFilesHigh){openFilesHigh=openFiles;if(!(openFilesHigh%8))PSPNativeMemLog("[ROMFS] concurrent open files high water %u",openFilesHigh);}
+ if(!romStream){openFailures++;VitaNativeMemLog("[ROMFS] no rom stream (open #%u) index=%u",openFailures,(unsigned)index);return FALSE;}
+ openFiles++;if(openFiles>openFilesHigh){openFilesHigh=openFiles;if(!(openFilesHigh%8))VitaNativeMemLog("[ROMFS] concurrent open files high water %u",openFilesHigh);}
  f->pcFilePtr=romStream;f->arc=a;f->stat=FS_FILE_STATUS_IS_FILE;f->error=FS_RESULT_SUCCESS;
  f->prop.file.own_id=index;f->prop.file.top=top;f->prop.file.bottom=bottom;f->prop.file.pos=top;return TRUE;
 }
@@ -159,20 +169,20 @@ s32 FS_ReadFile(FSFile*f,void*dst,s32 len){
 #ifdef OPT_ROM_CACHE
  st_readCalls++;st_readBytes+=(unsigned)len;
 #ifdef ROMFS_MEASURE
- if((st_readCalls%500)==0)PSPNativeMemLog("[ROMFS-CACHE] calls=%u romreads=%u hits=%u bytes=%llu",st_readCalls,st_blockMiss,st_blockHit,st_readBytes);
+ if((st_readCalls%500)==0)VitaNativeMemLog("[ROMFS-CACHE] calls=%u romreads=%u hits=%u bytes=%llu",st_readCalls,st_blockMiss,st_blockHit,st_readBytes);
 #endif
  /* The handle is shared, so a byte range is only valid by absolute offset; the cache keys on that. */
  s32 n=RomCachedRead(f->prop.file.pos,dst,(u32)len);
- if(n<0){readFailures++;PSPNativeMemLog("[ROMFS] read failed pos=%u (failure #%u)",(unsigned)f->prop.file.pos,readFailures);f->error=FS_RESULT_FAILURE;return -1;}
+ if(n<0){readFailures++;VitaNativeMemLog("[ROMFS] read failed pos=%u (failure #%u)",(unsigned)f->prop.file.pos,readFailures);f->error=FS_RESULT_FAILURE;return -1;}
  f->prop.file.pos+=(u32)n;
- if(n!=len){readFailures++;PSPNativeMemLog("[ROMFS] short read %u/%d at %u (failure #%u)",(unsigned)n,(int)len,(unsigned)(f->prop.file.pos-n),readFailures);}
+ if(n!=len){readFailures++;VitaNativeMemLog("[ROMFS] short read %u/%d at %u (failure #%u)",(unsigned)n,(int)len,(unsigned)(f->prop.file.pos-n),readFailures);}
  f->error=FS_RESULT_SUCCESS;return n;
 #else
  /* The handle is shared, so this file's position is only true right now. */
- if(fseek(f->pcFilePtr,(long)f->prop.file.pos,SEEK_SET)){readFailures++;PSPNativeMemLog("[ROMFS] seek failed pos=%u (failure #%u)",(unsigned)f->prop.file.pos,readFailures);f->error=FS_RESULT_FAILURE;return -1;}
+ if(fseek(f->pcFilePtr,(long)f->prop.file.pos,SEEK_SET)){readFailures++;VitaNativeMemLog("[ROMFS] seek failed pos=%u (failure #%u)",(unsigned)f->prop.file.pos,readFailures);f->error=FS_RESULT_FAILURE;return -1;}
  size_t n=fread(dst,1,len,f->pcFilePtr);f->prop.file.pos+=n;
  if((s32)n!=len){/* Report, but keep the old contract: partial reads still return n. */
-  readFailures++;PSPNativeMemLog("[ROMFS] short read %u/%d at %u err=%d (failure #%u)",(unsigned)n,(int)len,(unsigned)(f->prop.file.pos-n),ferror(f->pcFilePtr),readFailures);clearerr(f->pcFilePtr);}
+  readFailures++;VitaNativeMemLog("[ROMFS] short read %u/%d at %u err=%d (failure #%u)",(unsigned)n,(int)len,(unsigned)(f->prop.file.pos-n),ferror(f->pcFilePtr),readFailures);clearerr(f->pcFilePtr);}
  if(ferror(f->pcFilePtr)){f->error=FS_RESULT_FAILURE;return -1;}
  f->error=FS_RESULT_SUCCESS;return n;
 #endif
@@ -209,9 +219,9 @@ void CARD_Init(void){
 #include <sys/stat.h>
 BOOL CARD_IsPulledOut(void){struct stat st;return stat(romPath,&st)!=0||st.st_size<512;}
 
-void PSPNativeRomFSStats(unsigned*open,unsigned*high,unsigned*openFail,unsigned*readFail){
+void VitaNativeRomFSStats(unsigned*open,unsigned*high,unsigned*openFail,unsigned*readFail){
  if(open)*open=openFiles;if(high)*high=openFilesHigh;if(openFail)*openFail=openFailures;if(readFail)*readFail=readFailures;}
-void PSPNativeRomFSCacheStats(unsigned*calls,unsigned*hits,unsigned*misses){
+void VitaNativeRomFSCacheStats(unsigned*calls,unsigned*hits,unsigned*misses){
 #ifdef OPT_ROM_CACHE
  if(calls)*calls=st_readCalls;if(hits)*hits=st_blockHit;if(misses)*misses=st_blockMiss;
 #else

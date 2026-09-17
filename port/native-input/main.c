@@ -29,24 +29,24 @@ int main(void){
  FSFile f;FS_InitFile(&f);char magic[4];if(!FS_OpenFile(&f,"graphic/pl_font.narc")||FS_ReadFile(&f,magic,4)!=4||memcmp(magic,"NARC",4))failures++;FS_CloseFile(&f);
  SysTaskManager_AddTask(gSystem.vBlankTaskMgr,TaskCheck,NULL,1);unsigned previous=gSystem.frameCounter;OS_WaitIrq(TRUE,OS_IE_V_BLANK);
  if(ran!=1||gSystem.frameCounter!=previous+1||OS_GetProcMode()!=OS_PROCMODE_SYS)failures++;
- extern void PSPNativeInputStep(unsigned,unsigned,unsigned);extern void PSPNativeInputPoll(void);
+ extern void VitaNativeInputStep(unsigned,unsigned,unsigned);extern void VitaNativeInputPoll(void);
  InitKeypadAndTouchpad();
  const unsigned map[12]={PSP_CTRL_CIRCLE,PSP_CTRL_CROSS,PSP_CTRL_SELECT,PSP_CTRL_START,PSP_CTRL_RIGHT,PSP_CTRL_LEFT,PSP_CTRL_UP,PSP_CTRL_DOWN,PSP_CTRL_RTRIGGER,PSP_CTRL_LTRIGGER,PSP_CTRL_TRIANGLE,PSP_CTRL_SQUARE};
- for(unsigned i=0;i<12;i++){PSPNativeInputStep(map[i],128,128);ReadKeypadAndTouchpad();if(gSystem.heldKeys!=(1u<<i)||gSystem.pressedKeys!=(1u<<i))failures++;PSPNativeInputStep(0,128,128);ReadKeypadAndTouchpad();}
+ for(unsigned i=0;i<12;i++){VitaNativeInputStep(map[i],128,128);ReadKeypadAndTouchpad();if(gSystem.heldKeys!=(1u<<i)||gSystem.pressedKeys!=(1u<<i))failures++;VitaNativeInputStep(0,128,128);ReadKeypadAndTouchpad();}
 
- PSPNativeInputStep(PSP_CTRL_CIRCLE,128,128);ReadKeypadAndTouchpad();if(gSystem.heldKeys!=PAD_BUTTON_A||gSystem.pressedKeys!=PAD_BUTTON_A)failures++;
- for(unsigned i=1;i<=8;i++){PSPNativeInputStep(PSP_CTRL_CIRCLE,128,128);ReadKeypadAndTouchpad();if(gSystem.pressedKeys||((i==8)!=(gSystem.pressedKeysRepeatable==PAD_BUTTON_A)))failures++;}
- PSPNativeInputStep(0,128,128);ReadKeypadAndTouchpad();if(gSystem.heldKeys||gSystem.touchHeld)failures++;
- PSPNativeInputStep(PSP_CTRL_SELECT|PSP_CTRL_CROSS,128,128);ReadKeypadAndTouchpad();if(!gSystem.touchPressed||!gSystem.touchHeld||(gSystem.heldKeys&PAD_BUTTON_B))failures++;
- PSPNativeInputStep(PSP_CTRL_CROSS|PSP_CTRL_RIGHT,255,128);ReadKeypadAndTouchpad();if(gSystem.touchPressed||gSystem.touchX!=133||!gSystem.touchHeld||(gSystem.heldKeys&PAD_PLUS_KEY_MASK))failures++;
- PSPNativeInputStep(0,128,128);ReadKeypadAndTouchpad();if(gSystem.touchHeld)failures++;
- PSPNativeInputStep(PSP_CTRL_SELECT|PSP_CTRL_CROSS,128,128);ReadKeypadAndTouchpad();if(gSystem.touchHeld||!(gSystem.heldKeys&PAD_BUTTON_B))failures++;
- for(unsigned i=0;i<200;i++)PSPNativeInputStep(0,0,0);ReadKeypadAndTouchpad();if(gSystem.touchX||gSystem.touchY)failures++;
- PSPNativeInputStep(PSP_CTRL_TRIANGLE|PSP_CTRL_SQUARE|PSP_CTRL_START,128,128);ReadKeypadAndTouchpad();if(gSystem.heldKeys!=(PAD_BUTTON_X|PAD_BUTTON_Y|PAD_BUTTON_START))failures++;
- PSPNativeInputPoll();ReadKeypadAndTouchpad();
+ VitaNativeInputStep(PSP_CTRL_CIRCLE,128,128);ReadKeypadAndTouchpad();if(gSystem.heldKeys!=PAD_BUTTON_A||gSystem.pressedKeys!=PAD_BUTTON_A)failures++;
+ for(unsigned i=1;i<=8;i++){VitaNativeInputStep(PSP_CTRL_CIRCLE,128,128);ReadKeypadAndTouchpad();if(gSystem.pressedKeys||((i==8)!=(gSystem.pressedKeysRepeatable==PAD_BUTTON_A)))failures++;}
+ VitaNativeInputStep(0,128,128);ReadKeypadAndTouchpad();if(gSystem.heldKeys||gSystem.touchHeld)failures++;
+ VitaNativeInputStep(PSP_CTRL_SELECT|PSP_CTRL_CROSS,128,128);ReadKeypadAndTouchpad();if(!gSystem.touchPressed||!gSystem.touchHeld||(gSystem.heldKeys&PAD_BUTTON_B))failures++;
+ VitaNativeInputStep(PSP_CTRL_CROSS|PSP_CTRL_RIGHT,255,128);ReadKeypadAndTouchpad();if(gSystem.touchPressed||gSystem.touchX!=133||!gSystem.touchHeld||(gSystem.heldKeys&PAD_PLUS_KEY_MASK))failures++;
+ VitaNativeInputStep(0,128,128);ReadKeypadAndTouchpad();if(gSystem.touchHeld)failures++;
+ VitaNativeInputStep(PSP_CTRL_SELECT|PSP_CTRL_CROSS,128,128);ReadKeypadAndTouchpad();if(gSystem.touchHeld||!(gSystem.heldKeys&PAD_BUTTON_B))failures++;
+ for(unsigned i=0;i<200;i++)VitaNativeInputStep(0,0,0);ReadKeypadAndTouchpad();if(gSystem.touchX||gSystem.touchY)failures++;
+ VitaNativeInputStep(PSP_CTRL_TRIANGLE|PSP_CTRL_SQUARE|PSP_CTRL_START,128,128);ReadKeypadAndTouchpad();if(gSystem.heldKeys!=(PAD_BUTTON_X|PAD_BUTTON_Y|PAD_BUTTON_START))failures++;
+ VitaNativeInputPoll();ReadKeypadAndTouchpad();
  InitRTC();RTCDate date;RTCTime time;GetCurrentDateTime(&date,&time);ScePspDateTime now;sceRtcGetCurrentClockLocalTime(&now);
  if(date.year+2000!=now.year||date.month!=now.month||date.day!=now.day||time.hour!=now.hour||time.minute!=now.minute)failures++;
- extern unsigned PSPNativeRTCReadCount(void);unsigned reads=PSPNativeRTCReadCount();s64 stamp=GetTimestamp();for(unsigned i=0;i<11;i++)UpdateRTC();if(GetTimestamp()<stamp||PSPNativeRTCReadCount()!=reads+1)failures++;
+ extern unsigned VitaNativeRTCReadCount(void);unsigned reads=VitaNativeRTCReadCount();s64 stamp=GetTimestamp();for(unsigned i=0;i<11;i++)UpdateRTC();if(GetTimestamp()<stamp||VitaNativeRTCReadCount()!=reads+1)failures++;
  printf("[INPUT-RTC] failures=%u timestamp=%lld date=%lu-%lu-%lu %lu:%lu:%lu\n",failures,stamp,(unsigned long)date.year+2000,(unsigned long)date.month,(unsigned long)date.day,(unsigned long)time.hour,(unsigned long)time.minute,(unsigned long)time.second);
  printf("[STARTUP] validation failures=%u VBlankTasks=%u frame=%u FS=%d\n",failures,ran,gSystem.frameCounter,FS_IsAvailable());sceKernelExitGame();return failures;
 }

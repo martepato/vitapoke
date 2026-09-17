@@ -9,19 +9,19 @@
  * it has to be ticked once per displayed frame, after the frame's GE work has
  * been flushed and before the framebuffer is handed to the display. That is
  * exactly one point in this port, inside the renderer's Present(), which calls
- * PSPNativeOskFrameHook() through a weak symbol. Everything here runs on the
+ * VitaNativeOskFrameHook() through a weak symbol. Everything here runs on the
  * main thread; there is no locking because there is no second caller.
  *
  * This file deliberately includes only PSP headers. The game-side half lives
  * in naming_osk.c and includes only game headers; they meet through the few
  * plain-int/u16 entry points declared at the bottom of this comment block:
  *
- *   PSPNativeOskBegin(desc, intext, limit)  request a keyboard
- *   PSPNativeOskIsActive()                  dialog owns the screen
- *   PSPNativeOskFinished()                  result is ready to collect
- *   PSPNativeOskAccepted()                  1 = user confirmed, 0 = cancelled
- *   PSPNativeOskText()                      UTF-16 result, NUL terminated
- *   PSPNativeOskRelease()                   result consumed, back to idle
+ *   VitaNativeOskBegin(desc, intext, limit)  request a keyboard
+ *   VitaNativeOskIsActive()                  dialog owns the screen
+ *   VitaNativeOskFinished()                  result is ready to collect
+ *   VitaNativeOskAccepted()                  1 = user confirmed, 0 = cancelled
+ *   VitaNativeOskText()                      UTF-16 result, NUL terminated
+ *   VitaNativeOskRelease()                   result consumed, back to idle
  */
 #include <pspkernel.h>
 #include <psputility.h>
@@ -59,7 +59,7 @@ static unsigned sStateFrames;
 #define OSK_NO_SHOW_LIMIT 600
 #define OSK_ABANDON_LIMIT 900
 
-extern void PSPNativeMemLog(const char *fmt, ...);
+extern void VitaNativeMemLog(const char *fmt, ...);
 
 /* Length of a NUL-terminated UTF-16 string, without pulling in wide-char libc. */
 static int Utf16Len(const unsigned short *s)
@@ -71,27 +71,27 @@ static int Utf16Len(const unsigned short *s)
     return n;
 }
 
-int PSPNativeOskIsActive(void)
+int VitaNativeOskIsActive(void)
 {
     return sState != OSK_IDLE;
 }
 
-int PSPNativeOskFinished(void)
+int VitaNativeOskFinished(void)
 {
     return sState == OSK_DONE;
 }
 
-int PSPNativeOskAccepted(void)
+int VitaNativeOskAccepted(void)
 {
     return sAccepted;
 }
 
-const unsigned short *PSPNativeOskText(void)
+const unsigned short *VitaNativeOskText(void)
 {
     return sOut;
 }
 
-void PSPNativeOskRelease(void)
+void VitaNativeOskRelease(void)
 {
     sState = OSK_IDLE;
     sAccepted = 0;
@@ -99,7 +99,7 @@ void PSPNativeOskRelease(void)
     sStateFrames = 0;
 }
 
-void PSPNativeOskBegin(const unsigned short *desc, const unsigned short *intext, int limit)
+void VitaNativeOskBegin(const unsigned short *desc, const unsigned short *intext, int limit)
 {
     int i;
 
@@ -169,30 +169,30 @@ void PSPNativeOskBegin(const unsigned short *desc, const unsigned short *intext,
     sSawVisible = 0;
     sStateFrames = 0;
 
-#ifdef PSP_NATIVE_OSK_AUTONAME
+#ifdef VITAPOKE_OSK_AUTONAME
     /* TEST ONLY: substitute a fixed name without opening the dialog, so an
      * unattended headless probe (which cannot press buttons on the emulated
      * PSP pad, and so cannot drive the firmware keyboard) can still exercise
      * the whole conversion and write-back path. Never build a release with
-     * PSP_NATIVE_OSK_AUTONAME. */
+     * VITAPOKE_OSK_AUTONAME. */
     {
-        static const char autoName[] = PSP_NATIVE_OSK_AUTONAME;
+        static const char autoName[] = VITAPOKE_OSK_AUTONAME;
         for (i = 0; autoName[i] && i < limit; i++) {
             sOut[i] = (unsigned short)(unsigned char)autoName[i];
         }
         sOut[i] = 0;
         sAccepted = 1;
         sState = OSK_DONE;
-        PSPNativeMemLog("[OSK] AUTONAME test path, no dialog: \"%s\" limit=%d", autoName, limit);
+        VitaNativeMemLog("[OSK] AUTONAME test path, no dialog: \"%s\" limit=%d", autoName, limit);
         return;
     }
 #endif
 
     sState = OSK_PENDING;
-    PSPNativeMemLog("[OSK] requested limit=%d initial_len=%d", limit, Utf16Len(sIn));
+    VitaNativeMemLog("[OSK] requested limit=%d initial_len=%d", limit, Utf16Len(sIn));
 }
 
-void PSPNativeOskFrameHook(void)
+void VitaNativeOskFrameHook(void)
 {
     sStateFrames++;
 
@@ -200,7 +200,7 @@ void PSPNativeOskFrameHook(void)
     case OSK_PENDING: {
         int rc = sceUtilityOskInitStart(&sParams);
         if (rc < 0) {
-            PSPNativeMemLog("[OSK] sceUtilityOskInitStart failed %08x; using default name", rc);
+            VitaNativeMemLog("[OSK] sceUtilityOskInitStart failed %08x; using default name", rc);
             sAccepted = 0;
             sState = OSK_DONE;
         } else {
@@ -218,7 +218,7 @@ void PSPNativeOskFrameHook(void)
         case PSP_UTILITY_DIALOG_VISIBLE:
             if (!sSawVisible) {
                 sSawVisible = 1;
-                PSPNativeMemLog("[OSK] dialog visible at frame %u", sStateFrames);
+                VitaNativeMemLog("[OSK] dialog visible at frame %u", sStateFrames);
             }
             sceUtilityOskUpdate(1);
             break;
@@ -234,7 +234,7 @@ void PSPNativeOskFrameHook(void)
         default:
             sAccepted = (sData.result != PSP_UTILITY_OSK_RESULT_CANCELLED)
                 && (sParams.base.result == 0) && sSawVisible;
-            PSPNativeMemLog("[OSK] closed field_result=%d base_result=%08x accepted=%d",
+            VitaNativeMemLog("[OSK] closed field_result=%d base_result=%08x accepted=%d",
                 sData.result, sParams.base.result, sAccepted);
             sState = OSK_DONE;
             break;
@@ -242,11 +242,11 @@ void PSPNativeOskFrameHook(void)
 
         if (!sSawVisible) {
             if (sStateFrames == OSK_NO_SHOW_LIMIT) {
-                PSPNativeMemLog("[OSK] never became visible after %u frames; shutting down",
+                VitaNativeMemLog("[OSK] never became visible after %u frames; shutting down",
                     sStateFrames);
                 sceUtilityOskShutdownStart();
             } else if (sStateFrames >= OSK_ABANDON_LIMIT) {
-                PSPNativeMemLog("[OSK] abandoned after %u frames; using default name",
+                VitaNativeMemLog("[OSK] abandoned after %u frames; using default name",
                     sStateFrames);
                 sAccepted = 0;
                 sState = OSK_DONE;

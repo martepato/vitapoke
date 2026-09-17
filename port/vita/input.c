@@ -52,20 +52,20 @@ static const unsigned dsButtons[12] = {
  * its own rectangle (see include/vitapoke.h), and a finger elsewhere is not a stylus press. */
 static BOOL TouchToDS(const SceTouchReport *report, int *outX, int *outY)
 {
-	int x = (int)report->x * PSPOKE_VITA_SCREEN_W / TOUCH_MAX_X;
-	int y = (int)report->y * PSPOKE_VITA_SCREEN_H / TOUCH_MAX_Y;
+	int x = (int)report->x * VITAPOKE_SCREEN_W / TOUCH_MAX_X;
+	int y = (int)report->y * VITAPOKE_SCREEN_H / TOUCH_MAX_Y;
 
-	x -= PSPOKE_SUB_X;
-	y -= PSPOKE_SUB_Y;
-	if (x < 0 || y < 0 || x >= PSPOKE_SUB_W || y >= PSPOKE_SUB_H)
+	x -= VITAPOKE_SUB_X;
+	y -= VITAPOKE_SUB_Y;
+	if (x < 0 || y < 0 || x >= VITAPOKE_SUB_W || y >= VITAPOKE_SUB_H)
 		return FALSE;
 
-	*outX = x * PSPOKE_DS_W / PSPOKE_SUB_W;
-	*outY = y * PSPOKE_DS_H / PSPOKE_SUB_H;
-	if (*outX > PSPOKE_DS_W - 1)
-		*outX = PSPOKE_DS_W - 1;
-	if (*outY > PSPOKE_DS_H - 1)
-		*outY = PSPOKE_DS_H - 1;
+	*outX = x * VITAPOKE_DS_W / VITAPOKE_SUB_W;
+	*outY = y * VITAPOKE_DS_H / VITAPOKE_SUB_H;
+	if (*outX > VITAPOKE_DS_W - 1)
+		*outX = VITAPOKE_DS_W - 1;
+	if (*outY > VITAPOKE_DS_H - 1)
+		*outY = VITAPOKE_DS_H - 1;
 	return TRUE;
 }
 
@@ -118,7 +118,7 @@ void VitaNativeInputPoll(void)
 	memset(&pad, 0, sizeof pad);
 	memset(&touch, 0, sizeof touch);
 	if (sceCtrlPeekBufferPositive(0, &pad, 1) < 0)
-		PSPNativeFatal("pad read failed");
+		VitaNativeFatal("pad read failed");
 	/* A touch read that fails is not fatal: report no touch and keep the buttons working. */
 	if (sceTouchPeek(SCE_TOUCH_PORT_FRONT, &touch, 1) < 0)
 		touch.reportNum = 0;
@@ -154,14 +154,14 @@ BOOL TP_GetUserInfo(TPCalibrateParam *param)
 void TP_SetCalibrateParam(const TPCalibrateParam *param)
 {
 	if (!param || param->x0 || param->y0 || param->xDotSize != 256 || param->yDotSize != 256)
-		PSPNativeFatal("TP_SetCalibrateParam: unsupported non-identity calibration");
+		VitaNativeFatal("TP_SetCalibrateParam: unsupported non-identity calibration");
 	calibration = *param;
 }
 
 void TP_GetCalibratedPoint(TPData *out, const TPData *raw)
 {
 	if (!out || !raw)
-		PSPNativeFatal("TP_GetCalibratedPoint: null argument");
+		VitaNativeFatal("TP_GetCalibratedPoint: null argument");
 	*out = *raw;
 }
 
@@ -223,7 +223,7 @@ u16 TP_GetLatestIndexInAuto(void) { return autoIndex; }
 void TP_GetLatestRawPointInAuto(TPData *out)
 {
 	if (!out || !autoBuffer)
-		PSPNativeFatal("TP_GetLatestRawPointInAuto: no auto sampling in progress");
+		VitaNativeFatal("TP_GetLatestRawPointInAuto: no auto sampling in progress");
 	*out = autoBuffer[autoIndex];
 }
 

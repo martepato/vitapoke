@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # deps.sh : build the pinned GPU dependencies of the Vita port into the toolchain.
 #
-# The Vita port draws through vitaGL (OpenGL over GXM); port/vita/gu is a sceGu-compatible shim on top of
-# it, so the renderer sources keep calling sceGu*. vitaGL needs math-neon, and its header includes
-# vitashark.h, so that header is installed too. The library itself is not: the runtime GLSL compiler it
-# wraps needs SceShaccCg, which only exists on a console if the player extracts libshacccg.suprx from a
-# firmware update. port/vita/shark_stub.c answers those calls with "no compiler" instead, and the app
-# links SceShaccCg weakly, so it loads on a stock console. We only ever use vitaGL's precompiled shaders.
+# The renderer puts the DS's screens on the display through vitaGL (OpenGL over GXM); everything it
+# asks of the GPU is in port/native-vita-render/gpu.h, and gpu.cpp is the only file in the port that
+# includes a GL header. vitaGL needs math-neon, and its own header includes vitashark.h, so that
+# header is installed too. The vitaShaRK library is not: the runtime GLSL compiler it wraps needs
+# SceShaccCg, which only exists on a console if the player extracts libshacccg.suprx from a firmware
+# update. port/vita/shark_stub.c answers those calls with "no compiler" instead, and the application
+# links SceShaccCg weakly, so it loads on a stock console. The renderer only ever uses vitaGL's
+# precompiled fixed-function shaders, which is why it also runs in an emulator -- see docs/VITA.md.
 #
 # Everything is installed into $VITASDK, which is .cache/vitasdk unless you set VITASDK yourself. When it
 # is your own install, this writes into it, so it asks first.

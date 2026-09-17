@@ -2,7 +2,7 @@
 +++ b/src/text.c
 @@ -1,4 +1,5 @@
  #include "text.h"
-+#include "pspoke_qol.h"
++#include "vitapoke_qol.h"
  
  #include "global.h"
  
@@ -71,7 +71,7 @@
 +++ b/src/item.c
 @@ -1,4 +1,5 @@
  #include "item.h"
-+#include "pspoke_qol.h"
++#include "vitapoke_qol.h"
  
  #include "global.h"
  
@@ -117,7 +117,7 @@
 +++ b/src/pokemon.c
 @@ -1,4 +1,5 @@
  #include "pokemon.h"
-+#include "pspoke_qol.h"
++#include "vitapoke_qol.h"
  
  #include "global.h"
  
@@ -181,7 +181,7 @@
 +++ b/src/field/scrcmd_message.c
 @@ -1,4 +1,5 @@
  #include "msgdata/msg.naix"
-+#include "pspoke_qol.h"
++#include "vitapoke_qol.h"
  
  #include "bg_window.h"
  #include "dialog_box.h"
@@ -272,7 +272,7 @@
 +++ b/src/script_manager.c
 @@ -1,4 +1,5 @@
  #include "start_menu.h"
-+#include "pspoke_qol.h"
++#include "vitapoke_qol.h"
  #define _IN_FIELDMAP_C
  
  #include "constants/std_script.h"
@@ -318,7 +318,7 @@
 +++ b/src/data/fieldmap/script_cmd_table.h
 @@ -1,4 +1,10 @@
  #include "script.h"
-+#include "pspoke_qol.h"
++#include "vitapoke_qol.h"
 +#if VITAPOKE_QOL_REPEL_PROMPT
 +
 +BOOL ScrCmd_SSRepelAsk(ScriptContext *ctx);
@@ -357,7 +357,7 @@
 +++ b/src/party_menu_items.c
 @@ -1,4 +1,5 @@
  #include "party_menu_items.h"
-+#include "pspoke_qol.h"
++#include "vitapoke_qol.h"
  
  #include "global.h"
  
@@ -377,7 +377,7 @@
 +++ b/src/move.c
 @@ -1,4 +1,5 @@
  #include "move.h"
-+#include "pspoke_qol.h"
++#include "vitapoke_qol.h"
  
  #include "global.h"
  
@@ -417,14 +417,14 @@
 +    {
 +        static int logged;
 +        if (!logged) {
-+            extern void PSPNativeMemLog(const char *fmt, ...);
++            extern void VitaNativeMemLog(const char *fmt, ...);
 +            MoveTbl cut, smash, pool;
 +            logged = 1;
 +            ReadWholeNarcMemberByIdPair(&cut, NARC_poketool_waza_waza_tbl, MOVE_CUT);
 +            ReadWholeNarcMemberByIdPair(&smash, NARC_poketool_waza_waza_tbl, MOVE_ROCK_SMASH);
 +            ReadWholeNarcMemberByIdPair(&pool, NARC_poketool_waza_waza_tbl, MOVE_WHIRLPOOL);
 +            PSPQoL_ApplyMoveBuffs(MOVE_CUT, &cut); PSPQoL_ApplyMoveBuffs(MOVE_ROCK_SMASH, &smash); PSPQoL_ApplyMoveBuffs(MOVE_WHIRLPOOL, &pool);
-+            PSPNativeMemLog("[SS-QOL] move buffs: Cut %d/%d Rock Smash %d/%d Whirlpool %d/%d", cut.power, cut.accuracy, smash.power, smash.accuracy, pool.power, pool.accuracy);
++            VitaNativeMemLog("[SS-QOL] move buffs: Cut %d/%d Rock Smash %d/%d Whirlpool %d/%d", cut.power, cut.accuracy, smash.power, smash.accuracy, pool.power, pool.accuracy);
 +        }
 +    }
 +#endif

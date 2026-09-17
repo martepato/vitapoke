@@ -1,8 +1,7 @@
 /* vitapoke: constants and entry points specific to the Vita build.
  *
- * Nothing in port/ outside port/vita includes this; the shared sources keep their PSP spelling and the
- * compat layer translates. It exists so the Vita-only pieces -- the display layout, the sceGu shim, the
- * audio backend -- agree on the numbers without each inventing its own.
+ * It exists so the Vita-only pieces -- the display layout, the renderer, the audio backend, the file
+ * paths -- agree on the numbers and the names without each inventing its own.
  */
 #ifndef VITAPOKE_H
 #define VITAPOKE_H
@@ -10,12 +9,12 @@
 /* The Vita's display. 960x544 against the PSP's 480x272: exactly four times the area, which is what
  * makes a comfortable layout possible where the PSP had to squeeze.
  */
-#define PSPOKE_VITA_SCREEN_W 960
-#define PSPOKE_VITA_SCREEN_H 544
+#define VITAPOKE_SCREEN_W 960
+#define VITAPOKE_SCREEN_H 544
 
 /* A DS screen. */
-#define PSPOKE_DS_W 256
-#define PSPOKE_DS_H 192
+#define VITAPOKE_DS_W 256
+#define VITAPOKE_DS_H 192
 
 /* Layout of the two DS panels on the Vita display.
  *
@@ -25,18 +24,29 @@
  * the pair is centred and the 32-column overlap is taken off the outer edges. The gap between them
  * lines up with the console's centre line.
  *
- * This is the starting layout, not the final one: see docs/VITA.md. The renderer reads these, so an
- * alternative (one screen at 2.8x with the other small, as on the PSP) is a change here plus the
- * matching change in port/vita/gu.
+ * This is the starting layout, not the final one: see docs/VITA.md. The renderer is the only reader,
+ * so an alternative (one screen large with the other small, as the PSP had to do) is a change here
+ * and nowhere else.
  */
-#define PSPOKE_MAIN_SCALE 2
-#define PSPOKE_MAIN_W (PSPOKE_DS_W * PSPOKE_MAIN_SCALE)
-#define PSPOKE_MAIN_H (PSPOKE_DS_H * PSPOKE_MAIN_SCALE)
-#define PSPOKE_MAIN_X 0
-#define PSPOKE_MAIN_Y ((PSPOKE_VITA_SCREEN_H - PSPOKE_MAIN_H) / 2)
-#define PSPOKE_SUB_W PSPOKE_MAIN_W
-#define PSPOKE_SUB_H PSPOKE_MAIN_H
-#define PSPOKE_SUB_X (PSPOKE_VITA_SCREEN_W - PSPOKE_SUB_W)
-#define PSPOKE_SUB_Y PSPOKE_MAIN_Y
+#define VITAPOKE_MAIN_SCALE 2
+#define VITAPOKE_MAIN_W (VITAPOKE_DS_W * VITAPOKE_MAIN_SCALE)
+#define VITAPOKE_MAIN_H (VITAPOKE_DS_H * VITAPOKE_MAIN_SCALE)
+#define VITAPOKE_MAIN_X 0
+#define VITAPOKE_MAIN_Y ((VITAPOKE_SCREEN_H - VITAPOKE_MAIN_H) / 2)
+#define VITAPOKE_SUB_W VITAPOKE_MAIN_W
+#define VITAPOKE_SUB_H VITAPOKE_MAIN_H
+#define VITAPOKE_SUB_X (VITAPOKE_SCREEN_W - VITAPOKE_SUB_W)
+#define VITAPOKE_SUB_Y VITAPOKE_MAIN_Y
+
+/* Where the game's own files live on the memory card.
+ *
+ * A Vita application cannot write beside its own executable the way a PSP homebrew could: ux0:app is
+ * mounted read-only while the application runs. So the ROM, the save and the log all live in one
+ * directory under ux0:data that the user owns and can copy files in and out of.
+ */
+#define VITAPOKE_DATA_DIR  "ux0:data/vitapoke"
+#define VITAPOKE_LOG_PATH  VITAPOKE_DATA_DIR "/log.txt"
+#define VITAPOKE_ROM_PATH  VITAPOKE_DATA_DIR "/Platinum.nds"
+#define VITAPOKE_SAVE_PATH VITAPOKE_DATA_DIR "/Platinum.sav"
 
 #endif /* VITAPOKE_H */

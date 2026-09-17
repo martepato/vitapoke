@@ -12,7 +12,7 @@ struct RomBounds {u32 address,size,bss,fileID;BOOL supported;};
 #define COUNT (sizeof(ranges)/sizeof(ranges[0]))
 static unsigned char *initial[COUNT],state[COUNT];
 static BOOL initialized;
-BOOL PSPNativeOverlay_Init(void){
+BOOL VitaNativeOverlay_Init(void){
  if(initialized)return TRUE;
  for(unsigned i=0;i<COUNT;i++){
   size_t size=ranges[i].dataEnd-ranges[i].data;
@@ -28,7 +28,7 @@ BOOL PSPNativeOverlay_Init(void){
 extern BOOL sub_02039998(void);extern BOOL HandleLoadOverlay(FSOverlayID id,int loadType);
 static BOOL Supported(unsigned id){return bounds[id].supported||id==12||id==123;}
 static void NativeStaticInit(unsigned id){
- if(id==12&&!sub_02039998()){extern void PSPNativeMemLog(const char*,...);PSPNativeMemLog("[SS-OVERLAY] ov12 sinit: loading OVY_18");HandleLoadOverlay(18,2);}
+ if(id==12&&!sub_02039998()){extern void VitaNativeMemLog(const char*,...);VitaNativeMemLog("[SS-OVERLAY] ov12 sinit: loading OVY_18");HandleLoadOverlay(18,2);}
 }
 static BOOL Valid(const FSOverlayInfo *o){
  if(!o||o->target!=MI_PROCESSOR_ARM9||o->header.id>=COUNT)return FALSE;
@@ -50,7 +50,7 @@ BOOL FS_LoadOverlayImage(FSOverlayInfo *o){
  const struct NativeRange*r=&ranges[id];
  if(r->dataEnd!=r->data)memcpy(r->data,initial[id],r->dataEnd-r->data);
  if(r->bssEnd!=r->bss)memset(r->bss,0,r->bssEnd-r->bss);
- state[id]=1;{extern void PSPNativeMemLog(const char*,...);PSPNativeMemLog("[SS-OVERLAY] native load id=%u data=%u bss=%u",id,(unsigned)(r->dataEnd-r->data),(unsigned)(r->bssEnd-r->bss));}return TRUE;
+ state[id]=1;{extern void VitaNativeMemLog(const char*,...);VitaNativeMemLog("[SS-OVERLAY] native load id=%u data=%u bss=%u",id,(unsigned)(r->dataEnd-r->data),(unsigned)(r->bssEnd-r->bss));}return TRUE;
 }
 BOOL FS_LoadOverlayImageAsync(FSOverlayInfo *o,FSFile *file){
  if(!file||file->pcFilePtr)return FALSE;

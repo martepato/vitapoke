@@ -296,8 +296,8 @@ static G3SIM_MatrixStack_t * getVectorMatrixStack()
 
 //Calculate the clip matrix
 //Multiply the PositionMatrix * ProjectionMatrix
-#ifndef PSP_NATIVE_GE_TRANSFORM
-#define PSP_NATIVE_GE_TRANSFORM 1
+#ifndef VITAPOKE_GE_TRANSFORM
+#define VITAPOKE_GE_TRANSFORM 1
 #endif
 static unsigned nativeMatrixGen=1;
 static void NativeFinishPendingVertices();
@@ -1327,8 +1327,8 @@ static float s_specTerm[4][3], s_diffTerm[4][3], s_ambTerm[4][3], s_emisF[3];
 static float s_normTab[1024]; static u8 s_normTabInit;
 // A NORMAL command only publishes RGB in this frontend. Keep all derived
 // lighting cache updates on hits; COLOR may have overwritten the published RGB.
-#ifndef PSP_NATIVE_NORMAL_RESULT_CACHE
-#define PSP_NATIVE_NORMAL_RESULT_CACHE 1
+#ifndef VITAPOKE_NORMAL_RESULT_CACHE
+#define VITAPOKE_NORMAL_RESULT_CACHE 1
 #endif
 struct NormalResult {u32 data,epoch;u8 flags,color[3];};
 static NormalResult normalResults[256];static u32 normalResultEpoch=1;
@@ -1340,7 +1340,7 @@ static void RefreshLightCache()
         for(int i=0;i<3;i++) for(int j=0;j<3;j++) { s_cacheVecMtx[i][j] = currentVectorMatrix.nums[i][j]; s_fVecMtx[i][j] = FX_FX32_TO_F32(currentVectorMatrix.nums[i][j]); }
     }
     if(mtxChanged || s_lightCacheGen != s_lightGen) {
-#if PSP_NATIVE_NORMAL_RESULT_CACHE
+#if VITAPOKE_NORMAL_RESULT_CACHE
         if(++normalResultEpoch==0){memset(normalResults,0,sizeof(normalResults));normalResultEpoch=1;}
 #endif
         for(int l=0;l<4;l++) {
@@ -1363,7 +1363,7 @@ void G3SIM_Normal(u32 data)
 {
     if(!s_normTabInit) { for(int i=0;i<1024;i++) s_normTab[i] = DecodeSignedFx10(i); s_normTabInit = 1; }
     RefreshLightCache();
-#if PSP_NATIVE_NORMAL_RESULT_CACHE
+#if VITAPOKE_NORMAL_RESULT_CACHE
     NormalResult&result=normalResults[(data*2654435761u)>>24];
     if(result.epoch==normalResultEpoch&&result.data==data&&result.flags==s_curPolygonAttr.lightFlag){memcpy(s_g3CurColor,result.color,3);return;}
 #endif
@@ -1403,7 +1403,7 @@ void G3SIM_Normal(u32 data)
     s_g3CurColor[0] = (u8)(color[0] * 255.0f);
     s_g3CurColor[1] = (u8)(color[1] * 255.0f);
     s_g3CurColor[2] = (u8)(color[2] * 255.0f);
-#if PSP_NATIVE_NORMAL_RESULT_CACHE
+#if VITAPOKE_NORMAL_RESULT_CACHE
     result.data=data;result.epoch=normalResultEpoch;result.flags=s_curPolygonAttr.lightFlag;memcpy(result.color,s_g3CurColor,3);
 #endif
 }
@@ -1714,11 +1714,11 @@ static bool NativeHasPendingVertices(){for(int i=0;i<4;i++)if(s_der[i].gen==nati
 void G3SIM_Vtx(s16 x,s16 y,s16 z){int i=s_G3numInPoly;NativeRawVtx(x,y,z);NativeFinishSlot(i);}
 
 static unsigned hwPoly,hwMixed,hwOld;unsigned g3NonRawSubmits;
-extern "C" void PSPNativeHWStats(unsigned f){printf("[HW-ELIGIBLE] frame=%u polys=%u mixed=%u old=%u\n",f,hwPoly,hwMixed,hwOld);hwPoly=hwMixed=hwOld=0;}
+extern "C" void VitaNativeHWStats(unsigned f){printf("[HW-ELIGIBLE] frame=%u polys=%u mixed=%u old=%u\n",f,hwPoly,hwMixed,hwOld);hwPoly=hwMixed=hwOld=0;}
 static void G3SIM_SubmitPolygonOrdered(G3SIM_FxVtx_t * fxVerts, int numVerts, const u8 * order);
-extern "C" void PSPNativeRawMode(int);
+extern "C" void VitaNativeRawMode(int);
 void G3SIM_SubmitPolygon(G3SIM_FxVtx_t * fxVerts, int numVerts) {
- PSPNativeRawMode(0);
+ VitaNativeRawMode(0);
 
     G3SIM_Vertex_t glVerts[6];
     u8 addPolygon = TRUE;
@@ -1846,7 +1846,7 @@ void G3SIM_SubmitPolygon(G3SIM_FxVtx_t * fxVerts, int numVerts) {
    this by physically swapping slots before submitting (and swapping back); every per-slot
    computation here (w truncation, w==0/wsize over all four slots, z, bounds) is
    order-independent, only the emission order uses it. */
-extern "C" void PSPNativeRawMatrix(const s32*,unsigned);
+extern "C" void VitaNativeRawMatrix(const s32*,unsigned);
 static void NativeSubmitExact(G3SIM_FxVtx_t * fxVerts, int numVerts, const u8 * order) {
     u8 addPolygon = TRUE;
     if(numVerts < 3 || numVerts > 4) {
@@ -1910,15 +1910,15 @@ static void NativeSubmitExact(G3SIM_FxVtx_t * fxVerts, int numVerts, const u8 * 
     }
 }
 
-extern "C" void PSPNativeRawMode(int);
+extern "C" void VitaNativeRawMode(int);
 static void G3SIM_SubmitPolygonOrdered(G3SIM_FxVtx_t * fxVerts,int numVerts,const u8 *order){
- ++hwPoly;bool raw=PSP_NATIVE_GE_TRANSFORM;for(int i=0;i<numVerts;i++)if(s_der[i].gen!=nativeMatrixGen||s_der[i].finished)raw=false;
+ ++hwPoly;bool raw=VITAPOKE_GE_TRANSFORM;for(int i=0;i<numVerts;i++)if(s_der[i].gen!=nativeMatrixGen||s_der[i].finished)raw=false;
  if(!raw){++hwMixed;++g3NonRawSubmits;
 #if defined(OPT_MATH_LAZYFIN)&&defined(OPT_MATH_ORACLE)
   for(int i=0;i<numVerts;i++)NativeLazyCheck(i);
 #endif
-  for(int i=0;i<numVerts;i++)NativeFinishSlot(i);PSPNativeRawMode(0);NativeSubmitExact(fxVerts,numVerts,order);return;}
- EnsureClipMatrix();PSPNativeRawMatrix(&currentClipMatrix.nums[0][0],nativeMatrixGen);
+  for(int i=0;i<numVerts;i++)NativeFinishSlot(i);VitaNativeRawMode(0);NativeSubmitExact(fxVerts,numVerts,order);return;}
+ EnsureClipMatrix();VitaNativeRawMatrix(&currentClipMatrix.nums[0][0],nativeMatrixGen);
  static const u8 triEmit[3]={0,1,2},quadEmit[6]={0,1,2,2,3,0};const u8*emit=numVerts==4?quadEmit:triEmit;int n=numVerts==4?6:3;
  for(int k=0;k<n;k++){int i=order[emit[k]];const auto&d=s_der[i];G3SIM_AppendVtx(fxVerts[i].s,fxVerts[i].t,d.color,d.sx,d.sy,d.sz);}
 }
@@ -1994,5 +1994,5 @@ extern "C" void G3SIM_RestoreSlots(const G3SlotState*s){
  for(int i=0;i<4;i++)s_slotSnap[i]=-1;
 #endif
 }
-extern "C" int G3SIM_ReplayEligible(){return PSP_NATIVE_GE_TRANSFORM;}
-extern "C" void G3SIM_ReplayRawBegin(){EnsureClipMatrix();PSPNativeRawMatrix(&currentClipMatrix.nums[0][0],nativeMatrixGen);}
+extern "C" int G3SIM_ReplayEligible(){return VITAPOKE_GE_TRANSFORM;}
+extern "C" void G3SIM_ReplayRawBegin(){EnsureClipMatrix();VitaNativeRawMatrix(&currentClipMatrix.nums[0][0],nativeMatrixGen);}

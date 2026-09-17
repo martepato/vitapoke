@@ -35,12 +35,12 @@ static OSIntrMode intr;
 OSIntrMode OS_DisableInterrupts(void){OSIntrMode old=intr;intr=1;return old;}
 OSIntrMode OS_RestoreInterrupts(OSIntrMode mode){OSIntrMode old=intr;intr=mode;return old;}
 static OSProcMode procMode = OS_PROCMODE_SYS;
-extern BOOL PSPNativeAlarmInCallback(void);
-OSProcMode OS_GetProcMode(void){return PSPNativeAlarmInCallback()?OS_PROCMODE_IRQ:procMode;}
+extern BOOL VitaNativeAlarmInCallback(void);
+OSProcMode OS_GetProcMode(void){return VitaNativeAlarmInCallback()?OS_PROCMODE_IRQ:procMode;}
 static OSIrqFunction callbacks[32];static OSIrqMask mask;
 void OS_SetIrqFunction(OSIrqMask bits,OSIrqFunction fn){for(int i=0;i<32;i++)if(bits&(1u<<i))callbacks[i]=fn;}
 OSIrqMask OS_EnableIrqMask(OSIrqMask bits){OSIrqMask old=mask;mask|=bits;return old;}
-void SIM_handleAssertionFailureMsg(const char*file,unsigned line,const char*fmt,...){extern void PSPNativeMemLog(const char*,...);char m[200];va_list a;va_start(a,fmt);vsnprintf(m,sizeof m,fmt,a);va_end(a);PSPNativeMemLog("[FATAL] SDK assertion %s:%u %s",file,line,m);fflush(stdout);abort();}
+void SIM_handleAssertionFailureMsg(const char*file,unsigned line,const char*fmt,...){extern void VitaNativeMemLog(const char*,...);char m[200];va_list a;va_start(a,fmt);vsnprintf(m,sizeof m,fmt,a);va_end(a);VitaNativeMemLog("[FATAL] SDK assertion %s:%u %s",file,line,m);fflush(stdout);abort();}
 void ErrorHandling_AssertFail(void){printf("[STARTUP] game assertion\n");abort();}
 void OS_Terminate(void){printf("[STARTUP] OS terminate\n");abort();}
 
@@ -51,8 +51,8 @@ void CARD_SetCacheFlushThreshold(u32 icache,u32 dcache){cardIcacheThreshold=icac
 void OS_WaitIrq(BOOL clear,OSIrqMask bits){
  if(bits!=OS_IE_V_BLANK){printf("[STARTUP] unsupported IRQ wait %08lx\n",(unsigned long)bits);abort();}
  if(clear)s_HW_INTR_CHECK_BUF &= ~bits;
- extern void PSPNativeVBlankWait(void);PSPNativeVBlankWait();
- extern void PSPNativeInputVBlank(void);PSPNativeInputVBlank();
+ extern void VitaNativeVBlankWait(void);VitaNativeVBlankWait();
+ extern void VitaNativeInputVBlank(void);VitaNativeInputVBlank();
  if(!intr && (mask & bits) && callbacks[0]){OSProcMode old=procMode;procMode=OS_PROCMODE_IRQ;callbacks[0]();procMode=old;}
 }
 
@@ -72,9 +72,9 @@ void SIM_handleAssertionFailure(const char*file,unsigned line,const char*expr){p
 void OS_IrqHandler(void){puts("[NATIVE] unsupported direct DS network IRQ handler");abort();}
 /* PSP port: the DS soft-resets to the title screen (after the Hall of Fame credits, soft-reset combo, errors).
  * Relaunch our own EBOOT; the save has already been written synchronously by then. */
-extern char gPSPNativeSelfPath[256];
-void OS_ResetSystem(u32 parameter){extern void PSPNativeMemLog(const char*,...);PSPNativeMemLog("[NATIVE] reset requested %lu; relaunching %s",(unsigned long)parameter,gPSPNativeSelfPath);printf("[NATIVE] reset requested %lu; relaunching %s\n",(unsigned long)parameter,gPSPNativeSelfPath);
- if(gPSPNativeSelfPath[0]){struct SceKernelLoadExecParam prm;prm.size=sizeof(prm);prm.args=strlen(gPSPNativeSelfPath)+1;prm.argp=gPSPNativeSelfPath;prm.key=NULL;int r=sceKernelLoadExec(gPSPNativeSelfPath,&prm);printf("[NATIVE] sceKernelLoadExec returned %d\n",r);PSPNativeMemLog("[NATIVE] sceKernelLoadExec returned %d",r);}
+extern char gVitaNativeSelfPath[256];
+void OS_ResetSystem(u32 parameter){extern void VitaNativeMemLog(const char*,...);VitaNativeMemLog("[NATIVE] reset requested %lu; relaunching %s",(unsigned long)parameter,gVitaNativeSelfPath);printf("[NATIVE] reset requested %lu; relaunching %s\n",(unsigned long)parameter,gVitaNativeSelfPath);
+ if(gVitaNativeSelfPath[0]){struct SceKernelLoadExecParam prm;prm.size=sizeof(prm);prm.args=strlen(gVitaNativeSelfPath)+1;prm.argp=gVitaNativeSelfPath;prm.key=NULL;int r=sceKernelLoadExec(gVitaNativeSelfPath,&prm);printf("[NATIVE] sceKernelLoadExec returned %d\n",r);VitaNativeMemLog("[NATIVE] sceKernelLoadExec returned %d",r);}
  printf("[NATIVE] native restart failed\n");abort();}
 void OS_SetDPermissionsForProtectionRegion(u32 mask,u32 flags){printf("[NATIVE] unsupported DS cartridge protection %lx/%lx\n",(unsigned long)mask,(unsigned long)flags);abort();}
 void SVC_WaitByLoop(s32 count){if(count>0){uint64_t us=((uint64_t)(u32)count*4000000u+OS_SYSTEM_CLOCK-1)/OS_SYSTEM_CLOCK;while(us){u32 part=us>1000000?1000000:(u32)us;sceKernelDelayThread(part);us-=part;}}}

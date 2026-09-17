@@ -8,7 +8,6 @@
 #   @SDKBUILD@    the DS SDK's build-target define
 #   @BUILDMAK@    the make fragment providing CC/AR and the object rules
 #   @SDKINC@      VitaSDK's own include directory
-#   @OVERLAYLD@   the linker script the overlay layout is built from (still to be written)
 source "$(dirname "$0")/common.sh"
 WORK=$1; T="$WORK/test_out"
 
@@ -31,13 +30,12 @@ TARGETCC="-mtune=cortex-a9 -mfpu=neon -fno-short-enums -Wno-incompatible-pointer
 SDKBUILD="SDK_BUILD_VITA"
 BUILDMAK="$T/build/vita.mak"
 SDKINC="$VITASDK/arm-vita-eabi/include"
-OVERLAYLD="$T/build/overlays.ld"
 
 mkdir -p "$T" "$WORK/melon"
 rsync -a "$ROOT/port/" "$T/"
 rsync -a --exclude README.md "$ROOT/third_party/melonDS/" "$WORK/melon/"
-{ grep -rlI -e '@WORK@' -e '@TOOLBIN@' -e '@TARGETCC@' -e '@SDKBUILD@' -e '@BUILDMAK@' -e '@SDKINC@' -e '@OVERLAYLD@' "$T" || true; } | while read -r f; do
+{ grep -rlI -e '@WORK@' -e '@TOOLBIN@' -e '@TARGETCC@' -e '@SDKBUILD@' -e '@BUILDMAK@' -e '@SDKINC@' "$T" || true; } | while read -r f; do
   sed -i.bak -e "s#@WORK@#$T#g" -e "s#@TOOLBIN@#$TOOLBIN#g" -e "s#@TARGETCC@#$TARGETCC#g" \
              -e "s#@SDKBUILD@#$SDKBUILD#g" -e "s#@BUILDMAK@#$BUILDMAK#g" -e "s#@SDKINC@#$SDKINC#g" \
-             -e "s#@OVERLAYLD@#$OVERLAYLD#g" "$f" && rm -f "$f.bak"
+             "$f" && rm -f "$f.bak"
 done

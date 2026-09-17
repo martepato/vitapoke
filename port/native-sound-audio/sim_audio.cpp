@@ -174,13 +174,13 @@ void SIM_Audio_Callback(void *userdata, Uint8 *stream, int len)
     #endif
 }
 
-#ifdef PSP_NATIVE_SAS
-extern "C" { u32 PSPNativeSasStartGen[16]; }
+#ifdef VITAPOKE_SAS
+extern "C" { u32 VitaNativeSasStartGen[16]; }
 #endif
 void SIM_Audio_StartChannel(int chNo)
 {
-#ifdef PSP_NATIVE_SAS
-    PSPNativeSasStartGen[chNo]++;   /* sas_out.c re-keys the voice when this changes */
+#ifdef VITAPOKE_SAS
+    VitaNativeSasStartGen[chNo]++;   /* sas_out.c re-keys the voice when this changes */
 #endif
     if(((s_SIM_sndcnt[chNo]>>29)&0x3) == 3) {
         s_SIM_internalSoundPos[chNo] = -1;
@@ -398,10 +398,10 @@ static void PanOutput(s32 in, s32 * left, s32 * right, int chNo)
     *left += ((s64)in * (128-pan)) >> 10;
     *right += ((s64)in * pan) >> 10;
 }
-extern "C" u32 PSPNativeAudioStateHash(void){u32 hash=2166136261u;for(int i=0;i<16;i++){u32 values[]={s_SIM_sndcnt[i],s_SIM_sndtmr[i],s_SIM_sndpnt[i],s_SIM_sndlen[i],(u32)s_SIM_internalSoundTimer[i],(u32)s_SIM_internalSoundPos[i],(u32)s_SIM_internalSoundSample[i],(u32)s_SIM_internalADPCMValLoop[i],(u32)s_SIM_internalADPCMIndexLoop[i],(u32)s_SIM_internalADPCMVal[i],(u32)s_SIM_internalADPCMIndex[i],s_SIM_internalADPCMCurByte[i],(u32)s_SIM_internalNextADPCMByte[i],s_SIM_internalNoiseVal[i]};for(unsigned j=0;j<sizeof(values)/sizeof(values[0]);j++)hash=(hash^values[j])*16777619u;}return hash;}
+extern "C" u32 VitaNativeAudioStateHash(void){u32 hash=2166136261u;for(int i=0;i<16;i++){u32 values[]={s_SIM_sndcnt[i],s_SIM_sndtmr[i],s_SIM_sndpnt[i],s_SIM_sndlen[i],(u32)s_SIM_internalSoundTimer[i],(u32)s_SIM_internalSoundPos[i],(u32)s_SIM_internalSoundSample[i],(u32)s_SIM_internalADPCMValLoop[i],(u32)s_SIM_internalADPCMIndexLoop[i],(u32)s_SIM_internalADPCMVal[i],(u32)s_SIM_internalADPCMIndex[i],s_SIM_internalADPCMCurByte[i],(u32)s_SIM_internalNextADPCMByte[i],s_SIM_internalNoiseVal[i]};for(unsigned j=0;j<sizeof(values)/sizeof(values[0]);j++)hash=(hash^values[j])*16777619u;}return hash;}
 
 /* ---- Silent (muted) channel advance -----------------------------------------
- * The native PSP app produces no speaker output. When PSPNativeSoundSilent is
+ * The native PSP app produces no speaker output. When VitaNativeSoundSilent is
  * nonzero the pump advances each busy channel arithmetically instead of running
  * SIM_Audio_RunChannel in 512-cycle chunks: the internal sample timer, the
  * sample position and the channel enable bit (bit 31 of s_SIM_sndcnt, which
@@ -412,7 +412,7 @@ extern "C" u32 PSPNativeAudioStateHash(void){u32 hash=2166136261u;for(int i=0;i<
  * are not maintained while silent: nothing outside this engine reads them.
  */
 extern "C" {
-int PSPNativeSoundSilent = 1;
+int VitaNativeSoundSilent = 1;
 static unsigned s_silentVerifyMismatches, s_silentVerifyChecks, s_silentVerifyStops;
 
 static inline u32 SilentSamplesFor(u32 timer, u32 cycles, u32 period)
@@ -521,7 +521,7 @@ void SIM_Audio_VerifySilentAdvance(u32 cycles, u32 chunk, int chNo)
                    s_SIM_sndtmr[chNo], s_SIM_sndpnt[chNo], (unsigned long)s_SIM_sndlen[chNo]);
     }
 }
-unsigned PSPNativeSoundSilentVerifyChecks(void){return s_silentVerifyChecks;}
-unsigned PSPNativeSoundSilentVerifyMismatches(void){return s_silentVerifyMismatches;}
-unsigned PSPNativeSoundSilentVerifyStops(void){return s_silentVerifyStops;}
+unsigned VitaNativeSoundSilentVerifyChecks(void){return s_silentVerifyChecks;}
+unsigned VitaNativeSoundSilentVerifyMismatches(void){return s_silentVerifyMismatches;}
+unsigned VitaNativeSoundSilentVerifyStops(void){return s_silentVerifyStops;}
 }

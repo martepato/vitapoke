@@ -11,7 +11,7 @@ PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER|THREAD_ATTR_VFPU);
 extern "C" fx32 FX_MulFunc(fx32 a,fx32 b){return ((s64)a*b+0x800)>>12;}
 extern "C" void SIM_handleAssertionFailure(const char*f,unsigned n,const char*e){printf("[ASSERT] %s:%u %s\n",f,n,e);abort();}
 extern "C" unsigned RenderStage(unsigned);
-extern "C" unsigned PSPNativeRenderTestPixel(unsigned,unsigned,unsigned);
+extern "C" unsigned VitaNativeRenderTestPixel(unsigned,unsigned,unsigned);
 static void scene() {
  const unsigned char font[8][7]={{30,17,17,30,16,16,16},{15,16,16,14,1,1,30},{17,25,25,21,19,19,17},{14,17,17,31,17,17,17},{31,4,4,4,4,4,4},{14,4,4,4,4,4,14},{17,17,17,17,17,10,4},{31,16,16,30,16,16,31}};
  const int word[10]={0,1,0,-1,2,3,4,5,6,7};
@@ -35,7 +35,7 @@ static void triangle(){G3SIM_Begin(GX_BEGIN_TRIANGLES);G3SIM_PolygonAttr((31u<<1
  s_g3PolygonVerts[3].w=4096;G3SIM_SubmitPolygon(s_g3PolygonVerts,3);}
 int main(){scePowerSetClockFrequency(333,333,166);scene();s_reg_GX_POWCNT=0x820f;
  s_reg_GX_DISPCNT|=1<<13;s_reg_G2_WIN0H=128;s_reg_G2_WIN0V=192;s_reg_G2_WININ=0x12;s_reg_G2_WINOUT=0x3f;
- PSPNativeRenderInit();unsigned failures=0,skipped=0,active=0;for(unsigned f=0;f<96;f++){
+ VitaNativeRenderInit();unsigned failures=0,skipped=0,active=0;for(unsigned f=0;f<96;f++){
   if(f==1)s_reg_GX_DISPCNT&=~(1<<13);if(f==40)((u16*)s_HW_DB_BG_PLTT)[1]=0x001f;
   if(f==45||f==55)s_reg_G2S_DB_BG0HOFS=1;if(f==46||f==56)s_reg_G2S_DB_BG0HOFS=0;
   if(f==60){memcpy(s_HW_DB_OBJ_VRAM,s_HW_OBJ_VRAM,0x20000);memcpy(s_HW_DB_OBJ_PLTT,s_HW_OBJ_PLTT,512);memcpy(s_HW_DB_OAM,s_HW_OAM,1024);s_reg_GXS_DB_DISPCNT|=(1<<12)|(1<<4);}
@@ -43,19 +43,19 @@ int main(){scePowerSetClockFrequency(333,333,166);scene();s_reg_GX_POWCNT=0x820f
   if(f==62)s_HW_DB_OBJ_VRAM[0]^=1;
   if(f==63)((u16*)s_HW_DB_OBJ_PLTT)[1]=0x7fff;
   if(f==64)s_reg_GXS_DB_DISPCNT&=~((1<<12)|(1<<4));
-  unsigned keys=(f==45)?1:0;int touch=(f>=55&&f<60);PSPNativeRenderSetInput(keys,touch,touch,128,96);
+  unsigned keys=(f==45)?1:0;int touch=(f>=55&&f<60);VitaNativeRenderSetInput(keys,touch,touch,128,96);
   if(f==85)s_reg_GX_POWCNT^=0x8000;
-  unsigned start=sceKernelGetSystemTimeLow();PSPNativeRenderBegin();triangle();if(PSPNativeRenderPresentNoWait())abort();
-  unsigned mask=PSPNativeRenderLastDrawMask();if(mask==1)skipped++;else active++;
+  unsigned start=sceKernelGetSystemTimeLow();VitaNativeRenderBegin();triangle();if(VitaNativeRenderPresentNoWait())abort();
+  unsigned mask=VitaNativeRenderLastDrawMask();if(mask==1)skipped++;else active++;
   if((f==45||f==46||f==55||f==56||(f>=60&&f<=64)||f>=85)&&mask!=3)failures++;
-  if(f==40||f==42)printf("[MIXED] palette frame=%u pixel=%08x\n",f,PSPNativeRenderTestPixel(1,89,64));
+  if(f==40||f==42)printf("[MIXED] palette frame=%u pixel=%08x\n",f,VitaNativeRenderTestPixel(1,89,64));
   if(f==40&&mask!=1)failures++;
-  if(f==40&&PSPNativeRenderTestPixel(1,89,64)!=0xfffbfbfb)failures++;
-  if(f==42&&(PSPNativeRenderTestPixel(1,89,64)&0xffffff)!=0xfb0000)failures++;
-  if(f==0){if((PSPNativeRenderTestPixel(0,100,96)&0xff00)>0x2000)failures++;if((PSPNativeRenderTestPixel(0,128,112)&0xffffff)!=0xfbfb00)failures++;unsigned c=PSPNativeRenderTestPixel(0,128,96);printf("[MIXED] center=%08x\n",c);if((c&0x00ff0000)>0x00200000||(c&0xff00)<0xc000)failures++;}
-  if(f==0||f==40||f==42||f==95){unsigned hash=2166136261u;for(unsigned e=0;e<2;e++)for(unsigned y=0;y<192;y++)for(unsigned x=0;x<256;x++)hash=(hash^PSPNativeRenderTestPixel(e,x,y))*16777619u;printf("[PIXELHASH] frame=%u hash=%08x\n",f,hash);}
+  if(f==40&&VitaNativeRenderTestPixel(1,89,64)!=0xfffbfbfb)failures++;
+  if(f==42&&(VitaNativeRenderTestPixel(1,89,64)&0xffffff)!=0xfb0000)failures++;
+  if(f==0){if((VitaNativeRenderTestPixel(0,100,96)&0xff00)>0x2000)failures++;if((VitaNativeRenderTestPixel(0,128,112)&0xffffff)!=0xfbfb00)failures++;unsigned c=VitaNativeRenderTestPixel(0,128,96);printf("[MIXED] center=%08x\n",c);if((c&0x00ff0000)>0x00200000||(c&0xff00)<0xc000)failures++;}
+  if(f==0||f==40||f==42||f==95){unsigned hash=2166136261u;for(unsigned e=0;e<2;e++)for(unsigned y=0;y<192;y++)for(unsigned x=0;x<256;x++)hash=(hash^VitaNativeRenderTestPixel(e,x,y))*16777619u;printf("[PIXELHASH] frame=%u hash=%08x\n",f,hash);}
   if(f==41||f==56||f==57)printf("[STAGES] bind=%u draw=%u convert=%u\n",RenderStage(0),RenderStage(1),RenderStage(2));
-  if(f==41||f==56||f==57){unsigned r,s;PSPNativeRenderGetTimings(&r,&s);printf("[MIXED] readback=%uus software2D=%uus\n",r,s);}
+  if(f==41||f==56||f==57){unsigned r,s;VitaNativeRenderGetTimings(&r,&s);printf("[MIXED] readback=%uus software2D=%uus\n",r,s);}
   if(f==41||f==56||f==57)printf("[MIXED] frame=%u mask=%u cpu_plus_present_us=%u\n",f,mask,sceKernelGetSystemTimeLow()-start);
  }
  printf("[MIXED] failures=%u bottom_skips=%u full=%u swap_top_live=1\n",failures,skipped,active);sceKernelExitGame();return failures;

@@ -11,7 +11,7 @@ day; they are written down so nobody rediscovers them. Paths refer to `port/` un
    SoulSilver's decompilation has the same shape (`GetNarcMemberSizeByIdPair` never closed its file). Any new game must
    start with the shared-handle ROM file system.
 2. **`printf` is invisible on hardware.** The only evidence is a file next to the EBOOT, written open/append/close per
-   line so it survives a crash (`PSPNativeMemLog`, `native-memlog.txt`). Log scene entries, overlay loads, ROM read
+   line so it survives a crash (`VitaNativeMemLog`, `native-memlog.txt`). Log scene entries, overlay loads, ROM read
    failures, an fps line every 600 frames, and a `[FATAL]` line before every abort. A line without a newline before an
    abort reads as a hang.
 3. **Hardware is 10-15% slower than PPSSPP.** Platinum: locked 30 fps in PPSSPP, 26-27 on a PSP-3001 in the heaviest
@@ -191,13 +191,13 @@ day; they are written down so nobody rediscovers them. Paths refer to `port/` un
   a warp. Advance dialogue with B, not an A-mash. `make WARP_TO=<map>,<x>,<z>` warps without walking; `NO_WILD=1`
   keeps exploration replays battle-free.
 - A replay that "passes" proves nothing until it is shown to reach the target: check loaded overlay ids, the coordinate
-  trail and a screenshot. Frame dumps (`PSP_NATIVE_FRAME_DUMP`) of both DS screens are the fastest way to see what the
+  trail and a screenshot. Frame dumps (`VITAPOKE_FRAME_DUMP`) of both DS screens are the fastest way to see what the
   game drew at a given frame.
 - Reproducibility: EBOOT md5s differ between trees because asserts embed paths; compare text symbol sizes with
   `psp-nm -S` instead.
 - `tests/run.sh` is the gate above turned into a repo script. Its first full run caught a shipped bug: the SoulSilver
   repel prompt asserted in `RunScriptCommand` because the script command table (`scrcmd_c.c`, not rebuilt by the QoL
-  step) never got commands 853/854, and because the patch wrote `#if PSPOKE_QOL_REPEL_PROMPT` *before* including the
+  step) never got commands 853/854, and because the patch wrote `#if VITAPOKE_QOL_REPEL_PROMPT` *before* including the
   header that defines it. A feature guarded by a header macro must include that header first, in every file that
   tests the macro, and every file a patch touches (including through headers) must be in the rebuild list. "Symbols
   identical to the card build" proves nothing when the card build has the same bug.

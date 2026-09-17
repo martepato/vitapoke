@@ -19,10 +19,10 @@
 #include "savedata.h"
 #include "special_encounter.h"
 
-#ifndef PSP_NATIVE_QOL_TEST_MODE
-#define PSP_NATIVE_QOL_TEST_MODE 0
+#ifndef VITAPOKE_QOL_TEST_MODE
+#define VITAPOKE_QOL_TEST_MODE 0
 #endif
-extern void PSPNativeMemLog(const char *fmt, ...);
+extern void VitaNativeMemLog(const char *fmt, ...);
 BOOL __real_Repel_UpdateSteps(SaveData *saveData, FieldSystem *fieldSystem);
 static int sSetup;
 
@@ -34,7 +34,7 @@ static void Evo(u16 species, u8 level, u8 cls, u16 param, u8 friendship)
     if (friendship) { u32 f = friendship; Pokemon_SetValue(mon, MON_DATA_FRIENDSHIP, &f); }
     int type = 0;
     u16 target = Pokemon_GetEvolutionTargetSpecies(NULL, mon, cls, param, &type);
-    PSPNativeMemLog("[QOL-TEST] evo species=%u level=%u class=%u param=%u friendship=%u base_friendship=%u -> target=%u type=%d", species, level, cls, param, friendship, base, target, type);
+    VitaNativeMemLog("[QOL-TEST] evo species=%u level=%u class=%u param=%u friendship=%u base_friendship=%u -> target=%u type=%d", species, level, cls, param, friendship, base, target, type);
     Heap_Free(mon);
 }
 
@@ -46,10 +46,10 @@ BOOL __wrap_Repel_UpdateSteps(SaveData *saveData, FieldSystem *fieldSystem)
     if (!sSetup) {
         sSetup = 1;
         Options *options = SaveData_GetOptions(saveData);
-        PSPNativeMemLog("[QOL-TEST] setup mode=%d saved_text_speed=%d", PSP_NATIVE_QOL_TEST_MODE, Options_TextSpeed(options));
-#if PSP_NATIVE_QOL_TEST_MODE == 4
+        VitaNativeMemLog("[QOL-TEST] setup mode=%d saved_text_speed=%d", VITAPOKE_QOL_TEST_MODE, Options_TextSpeed(options));
+#if VITAPOKE_QOL_TEST_MODE == 4
         Options_SetTextSpeed(options, OPTIONS_TEXT_SPEED_NORMAL);
-#elif PSP_NATIVE_QOL_TEST_MODE == 5
+#elif VITAPOKE_QOL_TEST_MODE == 5
         Options_SetTextSpeed(options, OPTIONS_TEXT_SPEED_SLOW);
 #else
         Options_SetTextSpeed(options, OPTIONS_TEXT_SPEED_FAST);
@@ -73,16 +73,16 @@ BOOL __wrap_Repel_UpdateSteps(SaveData *saveData, FieldSystem *fieldSystem)
         Evo(SPECIES_AZURILL, 5, 0, 0, 0); Evo(SPECIES_HAPPINY, 5, 0, 0, 0); Evo(SPECIES_PIKACHU, 5, 0, 0, 0);
         const u16 items[] = { ITEM_METAL_COAT, ITEM_DEEPSEASCALE, ITEM_FIRE_STONE, ITEM_LEFTOVERS, ITEM_EVERSTONE };
         for (int i = 0; i < 5; i++)
-            PSPNativeMemLog("[QOL-TEST] item=%u field_use=%d party_use=%d evolve=%d hold_effect=%d", items[i],
+            VitaNativeMemLog("[QOL-TEST] item=%u field_use=%d party_use=%d evolve=%d hold_effect=%d", items[i],
                 Item_LoadParam(items[i], ITEM_PARAM_FIELD_USE_FUNC, HEAP_ID_FIELD2), Item_LoadParam(items[i], ITEM_PARAM_PARTY_USE, HEAP_ID_FIELD2),
                 Item_LoadParam(items[i], ITEM_PARAM_EVOLVE, HEAP_ID_FIELD2), Item_LoadParam(items[i], ITEM_PARAM_HOLD_EFFECT, HEAP_ID_FIELD2));
-#if PSP_NATIVE_QOL_TEST_MODE >= 3
+#if VITAPOKE_QOL_TEST_MODE >= 3
         *steps = 200; /* text tests: no wild encounter before the save dialog */
 #endif
-#if PSP_NATIVE_QOL_TEST_MODE == 1
+#if VITAPOKE_QOL_TEST_MODE == 1
         *steps = 3;
         Bag_TryAddItem(bag, ITEM_REPEL, 2, HEAP_ID_FIELD2);
-#elif PSP_NATIVE_QOL_TEST_MODE == 2
+#elif VITAPOKE_QOL_TEST_MODE == 2
         Pokemon *mon = Party_GetPokemonBySlotIndex(SaveData_GetParty(saveData), 0);
         Pokemon_InitWith(mon, SPECIES_ONIX, 20, 32, FALSE, 0, 0, 0);
         /* real OT name/ID/met data through the game's own catch path (Summary/evolution screens assert on a blank OT) */
@@ -94,7 +94,7 @@ BOOL __wrap_Repel_UpdateSteps(SaveData *saveData, FieldSystem *fieldSystem)
     }
 
     BOOL r = __real_Repel_UpdateSteps(saveData, fieldSystem);
-    PSPNativeMemLog("[QOL-TEST] step repel_steps=%u bag_repel=%u bag_metal_coat=%u started=%d slot0_species=%u", *steps,
+    VitaNativeMemLog("[QOL-TEST] step repel_steps=%u bag_repel=%u bag_metal_coat=%u started=%d slot0_species=%u", *steps,
         Bag_GetItemQuantity(bag, ITEM_REPEL, HEAP_ID_FIELD2), Bag_GetItemQuantity(bag, ITEM_METAL_COAT, HEAP_ID_FIELD2), r,
         Pokemon_GetValue(Party_GetPokemonBySlotIndex(SaveData_GetParty(saveData), 0), MON_DATA_SPECIES, NULL));
     return r;

@@ -1,20 +1,67 @@
+# Lay out the game's overlay modules for the Vita link.
+#
+# On the DS the game is not one program: it is a small always-resident part plus about a hundred
+# overlay modules that the SDK loads over each other, from the ROM, as the game moves between
+# scenes. The port cannot do that -- the code is compiled and linked once, for a console with plenty
+# of memory -- so every overlay's code is simply always there.
+#
+# Their *data* still cannot be. Two overlays that were never in memory at the same time may have
+# static variables the game expects to be freshly initialised each time its scene starts, and on the
+# DS that came for free: loading the overlay copied its data section from the ROM again. So each
+# overlay's data, BSS and static constructors are gathered into their own output sections, whose
+# bounds this writes out twice: as a linker script that the app link adds to the default one, and as
+# a table in ranges.h that overlay.c uses to re-initialise a module when the game loads it.
+#
+# The sections are ordered data and constructors first, then all the BSS, rather than interleaved per
+# module. BSS occupies no space in the file, so a module's BSS between two modules' data would split
+# the loadable segment; keeping all of it at the end leaves one run of file-backed sections followed
+# by one run of zero-filled ones, which is the shape a loader expects.
+#
+# GNU ld's INSERT directive is what makes this a supplement rather than a replacement: the link uses
+# the toolchain's own script and these sections are inserted into it. The PSP build had to edit
+# PSPSDK's PRX script by hand instead, because its layout needed changes in the middle of it.
 from pathlib import Path
 import json
-p=Path(__file__).resolve().parent;mods=json.loads((p/'modules.json').read_text());ld=['SECTIONS {'];decl=[];rows=[]
-for m in mods:
- i=m['id']
- for k in ['data','sinit','bss']:
-  n=f'psp_ov_{i}_{k}';ld.append(f'.nativeov.{i}.{k} '+('(NOLOAD) ' if k=='bss' else '')+f': ALIGN(16) {{ {n}_start = .; KEEP(*(.nativeov.{i}.{k}*)) {n}_end = .; }}')
-  decl.append(f'extern unsigned char {n}_start[], {n}_end[];')
- rows.append('{'+','.join(f'psp_ov_{i}_{k}_{s}' for k in ['data','bss','sinit'] for s in ['start','end'])+'}')
-ld+=['} INSERT AFTER .data;'];(p/'overlays.ld').write_text('\n'.join(ld)+'\n')
-(p/'ranges.h').write_text('\n'.join(decl)+'\nstatic struct Range ranges[]={\n'+',\n'.join(rows)+'\n};\n')
 
-# The overlay layout is built by editing a base linker script. The Vita's has still to be written
-# (see docs/VITA.md); port/build/overlays.ld is where it goes.
-base=Path('@OVERLAYLD@').read_text()
-# Linker GC must retain the PSP syslib exports, including module_start.
-base=base.replace('.lib.ent        : { *(.lib.ent) }', '.lib.ent        : { KEEP(*(.lib.ent)) }')
-# Retail CheckElfSectionPRX rejects sh_offset+sh_size >=32MiB even for NOBITS.
-# Split canonical backing from other BSS; runtime addresses still use MEMSIZE=1.
-(p/'linkfile.prx').write_text(base.replace('  .bss            :', '\n'.join(ld[1:-1])+'\n  .native.backing (NOLOAD) : { *backing.o(.bss) }\n  .bss            :'))
+p = Path(__file__).resolve().parent
+mods = json.loads((p / 'modules.json').read_text())
+
+loaded, zero, decl, rows = [], [], [], []
+for m in mods:
+    i = m['id']
+    for kind in ['data', 'sinit']:
+        name = f'vitapoke_ov_{i}_{kind}'
+        loaded.append(f'  .nativeov.{i}.{kind} : ALIGN(16) {{ {name}_start = .; '
+                      f'KEEP(*(.nativeov.{i}.{kind}*)) {name}_end = .; }}')
+        decl.append(f'extern unsigned char {name}_start[], {name}_end[];')
+    name = f'vitapoke_ov_{i}_bss'
+    zero.append(f'  .nativeov.{i}.bss (NOLOAD) : ALIGN(16) {{ {name}_start = .; '
+                f'KEEP(*(.nativeov.{i}.bss*)) {name}_end = .; }}')
+    decl.append(f'extern unsigned char {name}_start[], {name}_end[];')
+    rows.append('{' + ','.join(f'vitapoke_ov_{i}_{k}_{s}'
+                               for k in ['data', 'bss', 'sinit'] for s in ['start', 'end']) + '}')
+
+# Room at the end of the read-only segment for the module's SCE metadata, which is not about the
+# overlays at all.
+#
+# vita-elf-create appends that metadata -- about 3 KB -- to the end of the first loadable segment,
+# and needs the room in the file between where that segment ends and where the next one begins. How
+# much room there is depends on where the code happens to end inside its last page: this
+# executable's ended 592 bytes short of a page boundary and the tool refused outright. Padding the
+# segment does not help by itself, because the next segment is aligned to the page after wherever
+# the code now ends.
+#
+# So the segment is made to end at a *known* offset into a page: aligned to a page, then a fixed
+# 256 bytes of content (port/vita/app_main.c's scePadding array), which leaves the rest of that page
+# -- 3840 bytes -- for the tool. READONLY is what keeps the padding in the read-only segment; a
+# section with no content, or a writable one, lands in the data segment and does nothing at all.
+script = ['/* Generated by overlays/gen-link.py. Added to the toolchain\'s own linker script. */',
+          'SECTIONS {',
+          '  .scepad (READONLY) : { . = ALIGN(0x1000); KEEP(*(.scepad)) }',
+          '} INSERT AFTER .eh_frame;',
+          'SECTIONS {', *loaded, *zero, '} INSERT AFTER .data;', '']
+(p / 'overlays.ld').write_text('\n'.join(script))
+
+(p / 'ranges.h').write_text('\n'.join(decl) + '\nstatic struct Range ranges[]={\n' +
+                            ',\n'.join(rows) + '\n};\n')
+print('overlay modules', len(mods))

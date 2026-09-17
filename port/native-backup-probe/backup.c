@@ -9,14 +9,14 @@ static FILE *file;
 static SceUID mutex=-1;
 static int owner=-1;
 static CARDResult result=CARD_RESULT_NO_RESPONSE;
-BOOL PSPNative_OpenBackup(const char *path){
+BOOL VitaNative_OpenBackup(const char *path){
  if(file||owner!=-1)return FALSE;
  FILE *candidate=fopen(path,"r+b");if(!candidate)return FALSE;
  if(fseek(candidate,0,SEEK_END)||ftell(candidate)!=BACKUP_BYTES){fclose(candidate);return FALSE;}
  mutex=sceKernelCreateSema("NativeBackup",0,1,1,NULL);if(mutex<0){fclose(candidate);return FALSE;}
  file=candidate;result=CARD_RESULT_SUCCESS;return TRUE;
 }
-BOOL PSPNative_CloseBackup(void){
+BOOL VitaNative_CloseBackup(void){
  if(owner!=-1||!file)return FALSE;
  int status=fclose(file);file=NULL;sceKernelDeleteSema(mutex);mutex=-1;
  result=status?CARD_RESULT_FAILURE:CARD_RESULT_SUCCESS;return status==0;

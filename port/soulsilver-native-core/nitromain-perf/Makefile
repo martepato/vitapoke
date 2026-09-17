@@ -1,13 +1,13 @@
 TARGET = ss-native-main
 OBJS = g2_asm_abi.o mi_hwaddr.o naming_osk_ss.o osk.o fx_mtx_native.o ss_memlog.o dsprot_native.o area_data_native.o billboard_bootstrap.o fieldmap_native.o map_movement.o field_init.o main_menu_native.o menu_native.o window_adapter.o fade_trace.o g2d_culling.o g2d_culling_proof.o fade_wrapper_test.o g2d_native.o g2d_proof.o overlay.o brightness_native.o brightness_proof.o timer3_psp.o frame.o cadence.o game_aliases.o ssmain_trace.o missing.o sdk_alias.o owner_lock.o backup.o audio_bank.o audio_loader.o audio_backend.o audio_seq.o audio_exchannel.o audio_channel.o audio_engine.o offline.o gx_dma.o main.o platform.o config.o romfs.o romfs_lock.o ss_rom_header.o threads.o alarms.o mi_memory.o mi_dma.o backing.o graphics_registers.o power.o mic_pm.o os_sync.o sdl_threads.o ctrdg_absent.o input.o wifi_check_native.o wifi_task_native.o mwcc_float_ptrs.o sas_out.o
 INCDIR = include @WORK@/soulsilver-native-core/include @WORK@/soulsilver-native-core/game-include @WORK@/native-probe/generated @WORK@/native-probe/libntrsystem/include @WORK@/native-graphics/libntr/include
-PSP_NATIVE_PROBE_FRAMES ?= 3600
-PSP_NATIVE_PLAY ?= 0
-CFLAGS = -DPSP_NATIVE_PROBE_FRAMES=$(PSP_NATIVE_PROBE_FRAMES) -DPSP_NATIVE_MEMLOG=1 -DPSP_NATIVE_PLAY=$(PSP_NATIVE_PLAY) -DSDL_MAIN_HANDLED -O2 @TARGETCC@ -std=gnu99 -DSDK_PORT -DSDK_X86 -D@SDKBUILD@ -DSDK_TS -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM -ffunction-sections -fdata-sections
+VITAPOKE_PROBE_FRAMES ?= 3600
+VITAPOKE_PLAY ?= 0
+CFLAGS = -DVITAPOKE_PROBE_FRAMES=$(VITAPOKE_PROBE_FRAMES) -DVITAPOKE_MEMLOG=1 -DVITAPOKE_PLAY=$(VITAPOKE_PLAY) -DSDL_MAIN_HANDLED -O2 @TARGETCC@ -std=gnu99 -DSDK_PORT -DSDK_X86 -D@SDKBUILD@ -DSDK_TS -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM -ffunction-sections -fdata-sections
 # DEV=1: on-screen fps counter plus timing lines in native-memlog.txt (for development).
 DEV ?= 0
 ifeq ($(DEV),1)
-CFLAGS += -DPSP_NATIVE_DEV
+CFLAGS += -DVITAPOKE_DEV
 endif
 # Test-only frame dumps (alpha-3D check); empty for every normal/play build.
 CFLAGS += $(FRAME_DUMP_CFLAGS)
@@ -15,7 +15,7 @@ CFLAGS += $(FRAME_DUMP_CFLAGS)
 # so `make OSK_AUTONAME=Gold` makes osk.c return that name without opening the dialog.
 # Never set for a release build (the play build recipe does not).
 ifdef OSK_AUTONAME
-CFLAGS += -DPSP_NATIVE_OSK_AUTONAME=\"$(OSK_AUTONAME)\"
+CFLAGS += -DVITAPOKE_OSK_AUTONAME=\"$(OSK_AUTONAME)\"
 endif
 LIBS = -Wl,--start-group ../../soulsilver-native-player-movement/libss-player-movement.a ../../soulsilver-native-menu-sprites/libss-menu-sprites.a ../../soulsilver-native-particles/libss-particles.a ../../soulsilver-native-window/libss-window.a ../../soulsilver-native-sound-helpers/libss-sound-helpers.a ../../soulsilver-native-assets/fade-port/wipe-candidate/libss-native-fade.a ../../soulsilver-native-overlays/libss-game-overlays.a ../../soulsilver-native-play/maploader/libss-maploader.a ../../soulsilver-native-codegen/libss-native-translated.a ../../soulsilver-native-overlays/libss-data-overlays.a ../../soulsilver-native-islands/libss-wfc-startup.a libsdk-filtered-ss.a libss-render.a ../../native-probe/libnetwork-probe.a -Wl,--end-group -lstdc++ -lm
 LDFLAGS = -Wl,--wrap=sub_02078B78 -Wl,--wrap=sub_02078B58 -Wl,--wrap=BeginNormalPaletteFade -Wl,--wrap=OverlayManager_New -Wl,--wrap=MIi_CpuClear32 -Wl,--wrap=MIi_CpuClear16 -Wl,--wrap=MIi_CpuClearFast -Wl,--wrap=MIi_CpuCopy16 -Wl,--wrap=MIi_CpuCopy32 -Wl,--wrap=MIi_CpuCopyFast -Wl,--wrap=MI_CpuCopy8 -Wl,--wrap=MI_CpuFill8 -Wl,--wrap=MI_DmaCopy16 -Wl,--wrap=MI_DmaCopy32 -Wl,--wrap=MI_DmaFill32 -Wl,--wrap=DC_FlushRange -Wl,--wrap=CTRDG_Init -Wl,--wrap=G3X_GetClipMtx -Wl,--gc-sections,-Map,ss-native-main.map

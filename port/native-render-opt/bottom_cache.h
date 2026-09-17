@@ -12,7 +12,7 @@ static bool SameWords(const void*aa,const void*bb,unsigned bytes){
 static bool BottomSame(unsigned power){
  if(!bottomCache.valid||bottomCache.enabled!=(power&512))return false;
  if(!(power&512))return true; // Disabled engine is always blank.
- if(!SameWords(bottomCache.regs,PSPNative_GfxRegisters+0x1000,0x70)||!SameWords(bottomCache.palette,GPU::Palette+1024,512))return false;
+ if(!SameWords(bottomCache.regs,VitaNative_GfxRegisters+0x1000,0x70)||!SameWords(bottomCache.palette,GPU::Palette+1024,512))return false;
  unsigned disp=reg32(0x1000);bool objects=(disp&((1<<12)|(1<<15)))!=0;
  if(!SameWords(bottomCache.bg,s_HW_DB_BG_VRAM,0x20000))return false;
  if(objects&&(!SameWords(bottomCache.obj,s_HW_DB_OBJ_VRAM,0x20000)||!SameWords(bottomCache.palette+512,GPU::Palette+1536,512)||!SameWords(bottomCache.oam,GPU::OAM+1024,1024)))return false;
@@ -21,7 +21,7 @@ static bool BottomSame(unsigned power){
  return true;
 }
 static void SaveBottom(unsigned power){
- memcpy(bottomCache.regs,PSPNative_GfxRegisters+0x1000,0x70);
+ memcpy(bottomCache.regs,VitaNative_GfxRegisters+0x1000,0x70);
  unsigned disp=reg32(0x1000);bool objects=(disp&((1<<12)|(1<<15)))!=0;
  memcpy(bottomCache.palette,GPU::Palette+1024,512);memcpy(bottomCache.bg,s_HW_DB_BG_VRAM,0x20000);
  if(objects){memcpy(bottomCache.palette+512,GPU::Palette+1536,512);memcpy(bottomCache.oam,GPU::OAM+1024,1024);memcpy(bottomCache.obj,s_HW_DB_OBJ_VRAM,0x20000);}
