@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # prereqs.sh [TOOL...] : check the host tools the build needs and offer to install any that are missing.
-# Called by build.sh (which needs the full set) and by build-vita.sh, which passes the smaller set its
-# setup step actually runs. Never runs sudo without asking first (set PSPPOKE_ASSUME_YES=1 to skip the
+# Callers pass the tools their step actually runs: `setup` needs only git/make/curl/tar, while a game
+# build also needs python3, patch and rsync. Never runs sudo without asking first (set VITAPOKE_ASSUME_YES=1 to skip the
 # question, e.g. in a non-interactive setup). Exit 0 when everything is present.
 source "$(dirname "$0")/common.sh"
 TOOLS="${*:-git python3 make patch rsync curl tar}"
@@ -28,9 +28,9 @@ SUDO=""; [ "$(id -u)" = 0 ] || SUDO="sudo "
 
 echo "Missing tools: $M"
 echo "To install them: ${SUDO}${CMD}"
-if [ "${PSPPOKE_ASSUME_YES:-0}" = 1 ]; then ans=y
+if [ "${VITAPOKE_ASSUME_YES:-0}" = 1 ]; then ans=y
 elif [ -t 0 ]; then printf 'Install them now? [y/N] '; read -r ans
-else die "not an interactive terminal: run the command above, then run the build again (or set PSPPOKE_ASSUME_YES=1)"; fi
+else die "not an interactive terminal: run the command above, then run the build again (or set VITAPOKE_ASSUME_YES=1)"; fi
 case "$ans" in y|Y|yes|YES) ;; *) die "run the command above, then run the build again";; esac
 
 # shellcheck disable=SC2086  # intentional word splitting: this is the command line printed above

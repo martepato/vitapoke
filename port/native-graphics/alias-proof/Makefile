@@ -3,9 +3,7 @@ OBJS = main.o graphics_registers.o g2.o native_gpu.o GPU2D_Soft.o
 INCDIR = include ../libntr/include ../../native-probe/generated ../../../melon
 CFLAGS = -O3 @TARGETCC@ -fno-tree-vectorize -fno-strict-aliasing -DSDK_PORT -DSDK_X86 -DSDK_TS -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM -DMELONDS_PSP $(EXTRA_CFLAGS)
 CXXFLAGS = $(CFLAGS) -std=gnu++17 -fno-exceptions -fno-rtti
-LIBS = -lpspgu -lpspge -lpsppower -lpsprtc -lstdc++ -lm
-EXTRA_TARGETS = EBOOT.PBP
-PSP_EBOOT_TITLE = Native libntr melon2D probe
+LIBS = -lstdc++ -lm
 include @BUILDMAK@
 
 g2.o: ../libntr/libraries/gx/src/g2.c

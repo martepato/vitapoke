@@ -5,12 +5,8 @@ CFLAGS = -D_NITRO -DPM_KEEP_ASSERTS -DPOKEPLATINUM_GENERATED_ENUM -O2 @TARGETCC@
 # Sound plays through the PSP sceSasCore voice mixer (sas_out.c); the CPU mixer is not used.
 CFLAGS += -DPSP_NATIVE_SAS
 CFLAGS += $(EXTRA_CFLAGS)
-LIBS = -lpsppower -lstdc++ -lm -lpspaudio -lpsprtc -Wl,--start-group libplatinum-probe.a libplatinum-internal.a libnetwork-probe.a libnative-filtered.a -lstdc++ -lpthread -lc -Wl,--end-group
+LIBS = -lstdc++ -lm -Wl,--start-group libplatinum-probe.a libplatinum-internal.a libnetwork-probe.a libnative-filtered.a -lstdc++ -lpthread -lc -Wl,--end-group
 LDFLAGS =  -Wl,-Map=link.map -Wl,--gc-sections
-BUILD_PRX = 1
-PSP_LARGE_MEMORY = 1
-EXTRA_TARGETS = EBOOT.PBP
-PSP_EBOOT_TITLE = Native Platinum startup
 include @BUILDMAK@
 boot.o: ../native-probe/pokeplatinum/src/boot.c
 	$(CC) $(CFLAGS) -c $< -o $@

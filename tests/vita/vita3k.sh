@@ -28,7 +28,7 @@ TITLE_ID=VPOK00003
 WORK="$ROOT/.work/vita3k"
 V3K="$CACHE/vita3k"
 
-[ -x "$VITASDK/bin/arm-vita-eabi-gcc" ] || die "VitaSDK not installed. Run: ./build-vita.sh setup"
+[ -x "$VITASDK/bin/arm-vita-eabi-gcc" ] || die "VitaSDK not installed. Run: ./build.sh setup"
 
 # ---------------------------------------------------------------- the emulator
 #

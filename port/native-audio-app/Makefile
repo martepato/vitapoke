@@ -15,12 +15,8 @@ endif
 CFLAGS += $(EXTRA_CFLAGS)
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti
 RENDER_LIB ?= ../native-stack-render/libnative-render-gu2d.a
-LIBS = $(RENDER_LIB) -Wl,--start-group overlays/libplatinum-overlays.a overlays/libinternal-overlays.a ../native-probe/libnetwork-probe.a libsdk-filtered.a -Wl,--end-group -lstdc++ -lpsputility -lpsprtc -lpspwlan -lpspgu -lpsppower -lpspaudio -lpspsascore -lpspdebug -lpthread -lm
+LIBS = $(RENDER_LIB) -Wl,--start-group overlays/libplatinum-overlays.a overlays/libinternal-overlays.a ../native-probe/libnetwork-probe.a libsdk-filtered.a -Wl,--end-group -lstdc++ -lpthread -lm
 LDFLAGS = -Wl,--gc-sections,-Map,native-app.map
-BUILD_PRX = 1
-PSP_LARGE_MEMORY = 1
-EXTRA_TARGETS = EBOOT.PBP
-PSP_EBOOT_TITLE = Platinum (pspoke)
 # TEST ONLY: QOL_TEST=<mode> links qol_test.o (Repel_UpdateSteps wrap, see qol_test.c).
 ifneq ($(QOL_TEST),)
 OBJS += qol_test.o
@@ -41,7 +37,6 @@ LDFLAGS += -Wl,--wrap=malloc,--wrap=free,--wrap=memalign,--wrap=realloc,--wrap=c
 endif
 # Own game ID in PARAM.SFO (PSPSDK defaults to UCJS10041, shared with lots of homebrew; custom firmware
 # applies per-game settings by this ID).
-SFOFLAGS += -s DISC_ID=NATP00001
 include @BUILDMAK@
 romfs.o: services/romfs.c
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -60,7 +55,6 @@ mi_dma.o: services/mi_dma.c
 
 overlay.o: overlays/overlay.c overlays/ranges.h
 	$(CC) $(CFLAGS) -c $< -o $@
-LDFLAGS := $(subst $(PSPSDK)/lib/linkfile.prx,overlays/linkfile.prx,$(LDFLAGS)) $(shell cat overlays/constructors.flags)
 
 threads.o: ../native-threads/threads.o
 	/bin/cp -f $< $@

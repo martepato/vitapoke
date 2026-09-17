@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# deps-vita.sh : build the pinned GPU dependencies of the Vita port into the toolchain.
+# deps.sh : build the pinned GPU dependencies of the Vita port into the toolchain.
 #
 # The Vita port draws through vitaGL (OpenGL over GXM); port/vita/gu is a sceGu-compatible shim on top of
 # it, so the renderer sources keep calling sceGu*. vitaGL needs math-neon, and its header includes
@@ -18,9 +18,8 @@ STAMP="$VITASDK/.vitapoke-deps"
 WANT="$(awk '$1=="vitaGL"||$1=="math-neon"||$1=="vitaShaRK"{printf "%s=%s ", $1, $3}' "$ROOT/third_party.lock")"
 
 # libntr's OS headers include <SDL2/SDL.h> and <SDL2/SDL_thread.h> on any target that is not
-# SDK_BUILD_ARM, so the whole Vita build needs them on the include path -- not just port/vita. The PSP
-# build gets them from PSPDEV's SDL2; VitaSDK ships none, so the declarations libntr actually refers to
-# are installed from port/vita/sdl2-shim. Done before the stamp check because it is nearly free and a
+# SDK_BUILD_ARM, so the whole build needs them on the include path -- not just port/vita. VitaSDK ships
+# no SDL, so the declarations libntr actually refers to are installed from port/vita/sdl2-shim. Done before the stamp check because it is nearly free and a
 # change to the shim has to land even when the GPU libraries are already built.
 install -d "$VITASDK/arm-vita-eabi/include/SDL2"
 install -m644 "$ROOT"/port/vita/sdl2-shim/SDL2/*.h "$VITASDK/arm-vita-eabi/include/SDL2/"
@@ -29,9 +28,9 @@ install -m644 "$ROOT"/port/vita/sdl2-shim/SDL2/*.h "$VITASDK/arm-vita-eabi/inclu
 
 if [ "$VITAPOKE_OWN_TOOLCHAIN" = 1 ]; then
   echo "This installs vitaGL and math-neon into your own VitaSDK at $VITASDK."
-  if [ "${PSPPOKE_ASSUME_YES:-0}" = 1 ]; then ans=y
+  if [ "${VITAPOKE_ASSUME_YES:-0}" = 1 ]; then ans=y
   elif [ -t 0 ]; then printf 'Install them there? [y/N] '; read -r ans
-  else die "not an interactive terminal: unset VITASDK to use the pinned toolchain in .cache/vitasdk, or set PSPPOKE_ASSUME_YES=1"; fi
+  else die "not an interactive terminal: unset VITASDK to use the pinned toolchain in .cache/vitasdk, or set VITAPOKE_ASSUME_YES=1"; fi
   case "$ans" in y|Y|yes|YES) ;; *) die "unset VITASDK to build against the pinned toolchain in .cache/vitasdk instead";; esac
 fi
 

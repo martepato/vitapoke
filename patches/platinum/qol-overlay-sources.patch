@@ -9,7 +9,7 @@
          printer->callbackParam = 0;
          Text_GenerateFontHalfRowLookupTable(printer->template.fgColor, printer->template.bgColor, printer->template.shadowColor);
  
-+#if PSPOKE_QOL_INSTANT_TEXT
++#if VITAPOKE_QOL_INSTANT_TEXT
 +        enum RenderResult result = TextPrinter_Render(printer);
 +
 +        /* PSP QoL instant text: a printer created with TEXT_SPEED_FAST (Options text
@@ -64,7 +64,7 @@
  
      u32 stepCount = Item_LoadParam(item, ITEM_PARAM_EFFECT_PARAM, HEAP_ID_BAG);
      SetRepelSteps(controller, stepCount);
-+#if PSPOKE_QOL_REPEL_PROMPT
++#if VITAPOKE_QOL_REPEL_PROMPT
 +    {
 +        extern u16 gPSPQoLLastRepel; /* PSP QoL: Repel re-use prompt */
 +        gPSPQoLLastRepel = item;
@@ -84,7 +84,7 @@
  
  u8 Options_TextFrameDelay(const Options *options)
  {
-+#if PSPOKE_QOL_INSTANT_TEXT
++#if VITAPOKE_QOL_INSTANT_TEXT
 +    /* PSP QoL instant text: every Options text speed (SLOW, MID, FAST) prints dialogue a whole
 +       page per frame. TEXT_SPEED_FAST printers take the burst path in text.c
 +       SysTask_RunTextPrinter, which still stops at A/B waits, scrolls and timed pauses. The
@@ -114,7 +114,7 @@
      return generic_anim_NANR;
  }
  
-+#if PSPOKE_QOL_TRADE_EVOS
++#if VITAPOKE_QOL_TRADE_EVOS
 +/* PSP QoL (Renegade Platinum): former trade items are used exactly like an evolution
 +   stone. Patches the in-RAM copy of the item record only. */
 +static void PSPQoL_PatchItemData(u16 item, ItemData *data)
@@ -149,7 +149,7 @@
  
      switch (type) {
      case ITEM_FILE_TYPE_DATA:
-+#if PSPOKE_QOL_TRADE_EVOS
++#if VITAPOKE_QOL_TRADE_EVOS
 +        {
 +            ItemData *data = NARC_AllocAndReadWholeMemberByIndexPair(NARC_INDEX_ITEMTOOL__ITEMDATA__PL_ITEM_DATA, sItemArchiveIDs[item].dataID, heapID);
 +            PSPQoL_PatchItemData(item, data);
@@ -201,7 +201,7 @@
  #include "script_manager.h"
 +#include "sound_playback.h"
  #include "special_encounter.h"
-+#if PSPOKE_QOL_REPEL_PROMPT
++#if VITAPOKE_QOL_REPEL_PROMPT
 +#include "string_gf.h"
 +#include "string_template.h"
 +#include "system.h"
@@ -404,7 +404,7 @@
          (*repelSteps)--;
  
          if (*repelSteps == 0) {
-+#if PSPOKE_QOL_REPEL_PROMPT
++#if VITAPOKE_QOL_REPEL_PROMPT
 +            u16 item = FindRepelToReuse(SaveData_GetBag(saveData));
 +
 +            if (item != ITEM_NONE) {
@@ -431,7 +431,7 @@
      BoxPokemon_SetValue(boxMon, MON_DATA_EXPERIENCE, &v1);
  
      v1 = SpeciesData_GetSpeciesValue(monSpecies, SPECIES_DATA_BASE_FRIENDSHIP);
-+#if PSPOKE_QOL_TRADE_EVOS
++#if VITAPOKE_QOL_TRADE_EVOS
 +
 +    /* PSP QoL: Renegade Platinum base happiness 180 for the friendship babies. */
 +    switch (monSpecies) {
@@ -454,7 +454,7 @@
      return FALSE;
  }
  
-+#if PSPOKE_QOL_TRADE_EVOS
++#if VITAPOKE_QOL_TRADE_EVOS
 +/* PSP QoL (2026-09-13): evolution changes copied from Drayano's Renegade Platinum
 +   documentation ("Evolution Changes"). Applied to the evolution table in RAM after it is
 +   read from the user's ROM; the ROM and the save format are untouched.
@@ -505,7 +505,7 @@
  
      SpeciesEvolution *speciesEvolutions = Heap_Alloc(HEAP_ID_SYSTEM, sizeof(SpeciesEvolution) * MAX_EVOLUTIONS);
      LoadSpeciesEvolutions(monSpecies, speciesEvolutions);
-+#if PSPOKE_QOL_TRADE_EVOS
++#if VITAPOKE_QOL_TRADE_EVOS
 +    PSPQoL_ApplyRenegadeEvolutions(monSpecies, speciesEvolutions);
 +#endif
  
@@ -523,7 +523,7 @@
  
  static void LoadMoveEntry(int move, MoveTable *entry);
  
-+#if PSPOKE_QOL_MOVE_BUFFS
++#if VITAPOKE_QOL_MOVE_BUFFS
 +/* PSP QoL: field-move buffs, applied to the in-RAM copy of the move table (the ROM is untouched).
 +   Cut 50 -> 60 power, 95 -> 100 accuracy; Rock Smash 40 -> 60 power; Whirlpool 15 -> 35 power,
 +   70 -> 85 accuracy (Whirlpool = its Black/White values). Move ids are the same in every Gen 4 game. */
@@ -540,7 +540,7 @@
  void MoveTable_Load(void *buf)
  {
      NARC_ReadFromMemberByIndexPair(buf, NARC_INDEX_POKETOOL__WAZA__PL_WAZA_TBL, 0, 0, sizeof(MoveTable) * MAX_MOVES);
-+#if PSPOKE_QOL_MOVE_BUFFS
++#if VITAPOKE_QOL_MOVE_BUFFS
 +    for (int move = 0; move < MAX_MOVES; move++) {
 +        PSPQoL_ApplyMoveBuffs(move, &((MoveTable *)buf)[move]);
 +    }
@@ -552,7 +552,7 @@
  static void LoadMoveEntry(int move, MoveTable *entry)
  {
      NARC_ReadWholeMemberByIndexPair(entry, NARC_INDEX_POKETOOL__WAZA__PL_WAZA_TBL, move);
-+#if PSPOKE_QOL_MOVE_BUFFS
++#if VITAPOKE_QOL_MOVE_BUFFS
 +    PSPQoL_ApplyMoveBuffs(move, entry);
 +    {
 +        static int logged;
@@ -583,7 +583,7 @@
          if (summaryScreen->cursor != LEARNED_MOVES_MAX) {
 -            if (Item_IsHMMove(summaryScreen->monData.moves[summaryScreen->cursor]) == TRUE && summaryScreen->data->move != MOVE_NONE) {
 +            /* PSP QoL: HM moves can be forgotten like any other move. */
-+            if (!PSPOKE_QOL_FORGET_HMS && Item_IsHMMove(summaryScreen->monData.moves[summaryScreen->cursor]) == TRUE && summaryScreen->data->move != MOVE_NONE) {
++            if (!VITAPOKE_QOL_FORGET_HMS && Item_IsHMMove(summaryScreen->monData.moves[summaryScreen->cursor]) == TRUE && summaryScreen->data->move != MOVE_NONE) {
                  Sprite_SetDrawFlag2(summaryScreen->sprites[SUMMARY_SPRITE_MOVE_CATEGORY_ICON], FALSE);
                  DrawEmptyHearts(summaryScreen);
                  PokemonSummaryScreen_PrintHMMovesCantBeForgotten(summaryScreen);
@@ -599,7 +599,7 @@
          move = battleParty->partyPokemon[battleParty->context->selectedPartyIndex].moves[battleParty->context->selectedMoveSlot].move;
      }
  
-+#if PSPOKE_QOL_FORGET_HMS
++#if VITAPOKE_QOL_FORGET_HMS
 +    (void)move;
 +    return FALSE; /* PSP QoL: HM moves can be forgotten like any other move. */
 +#else

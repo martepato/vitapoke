@@ -17,7 +17,7 @@ CFLAGS += $(FRAME_DUMP_CFLAGS)
 ifdef OSK_AUTONAME
 CFLAGS += -DPSP_NATIVE_OSK_AUTONAME=\"$(OSK_AUTONAME)\"
 endif
-LIBS = -Wl,--start-group ../../soulsilver-native-player-movement/libss-player-movement.a ../../soulsilver-native-menu-sprites/libss-menu-sprites.a ../../soulsilver-native-particles/libss-particles.a ../../soulsilver-native-window/libss-window.a ../../soulsilver-native-sound-helpers/libss-sound-helpers.a ../../soulsilver-native-assets/fade-port/wipe-candidate/libss-native-fade.a ../../soulsilver-native-overlays/libss-game-overlays.a ../../soulsilver-native-play/maploader/libss-maploader.a ../../soulsilver-native-codegen/libss-native-translated.a ../../soulsilver-native-overlays/libss-data-overlays.a ../../soulsilver-native-islands/libss-wfc-startup.a libsdk-filtered-ss.a libss-render.a ../../native-probe/libnetwork-probe.a -Wl,--end-group -lstdc++ -lpsppower -lpspgu -lpspaudio -lpspsascore -lpsputility -lpspwlan -lpsprtc -lm
+LIBS = -Wl,--start-group ../../soulsilver-native-player-movement/libss-player-movement.a ../../soulsilver-native-menu-sprites/libss-menu-sprites.a ../../soulsilver-native-particles/libss-particles.a ../../soulsilver-native-window/libss-window.a ../../soulsilver-native-sound-helpers/libss-sound-helpers.a ../../soulsilver-native-assets/fade-port/wipe-candidate/libss-native-fade.a ../../soulsilver-native-overlays/libss-game-overlays.a ../../soulsilver-native-play/maploader/libss-maploader.a ../../soulsilver-native-codegen/libss-native-translated.a ../../soulsilver-native-overlays/libss-data-overlays.a ../../soulsilver-native-islands/libss-wfc-startup.a libsdk-filtered-ss.a libss-render.a ../../native-probe/libnetwork-probe.a -Wl,--end-group -lstdc++ -lm
 LDFLAGS = -Wl,--wrap=sub_02078B78 -Wl,--wrap=sub_02078B58 -Wl,--wrap=BeginNormalPaletteFade -Wl,--wrap=OverlayManager_New -Wl,--wrap=MIi_CpuClear32 -Wl,--wrap=MIi_CpuClear16 -Wl,--wrap=MIi_CpuClearFast -Wl,--wrap=MIi_CpuCopy16 -Wl,--wrap=MIi_CpuCopy32 -Wl,--wrap=MIi_CpuCopyFast -Wl,--wrap=MI_CpuCopy8 -Wl,--wrap=MI_CpuFill8 -Wl,--wrap=MI_DmaCopy16 -Wl,--wrap=MI_DmaCopy32 -Wl,--wrap=MI_DmaFill32 -Wl,--wrap=DC_FlushRange -Wl,--wrap=CTRDG_Init -Wl,--wrap=G3X_GetClipMtx -Wl,--gc-sections,-Map,ss-native-main.map
 # Diagnostic replays only: `make NO_WILD=1` links diag_nowild.o, which wraps the grass-tile
 # encounter check so exploration scripts walk without wild battles. Never for a release.
@@ -69,16 +69,10 @@ ifdef PARTY_LEVEL_EDGE
 CFLAGS += -DPARTY_LEVEL_EDGE
 endif
 endif
-BUILD_PRX = 1
-PSP_LARGE_MEMORY = 1
-EXTRA_TARGETS = EBOOT.PBP
-PSP_EBOOT_TITLE = SoulSilver (pspoke)
 # Own game ID in PARAM.SFO (PSPSDK defaults to UCJS10041, shared with lots of homebrew; custom firmware
 # applies per-game settings by this ID).
-SFOFLAGS += -s DISC_ID=NATS00001
 include @BUILDMAK@
 
-LDFLAGS := $(subst $(PSPSDK)/lib/linkfile.prx,linkfile.prx,$(LDFLAGS))
 .PHONY: PARAM.SFO
 ss-native-main.elf: | linkfile.prx Makefile
 

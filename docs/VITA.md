@@ -3,13 +3,13 @@
 This is the working document for the Vita port: what has been decided, what has been proven, and what
 is left. `NOTES.md` is the PSP equivalent and still applies to anything shared.
 
-The Vita can already run the PSP build through Adrenaline. This port is a different thing: a native
-Vita application built with VitaSDK, for an ARM CPU with four cores and 512 MB of RAM instead of a
-single MIPS core with 64 MB.
+This is a native Vita application built with VitaSDK, for an ARM CPU with four cores and 512 MB of RAM.
+It began as a port of pspoke, which targets the PSP's single MIPS core and 64 MB; that target has been
+removed and the Vita is the only one.
 
 ## Why it is worth doing
 
-The PSP build is shaped by three of that console's limits, and the Vita has none of them.
+The code this port started from is shaped by three PSP limits, and the Vita has none of them.
 
 - **Memory.** pspoke needs about 38 MB, which is why it cannot run on a PSP-1000 at all
   ([issue #10](https://github.com/IbrahimIrfan/pspoke/issues/10)) and why the SoulSilver link script has
@@ -22,20 +22,21 @@ The PSP build is shaped by three of that console's limits, and the Vita has none
   `R` is taken over to swap which screen is large. The Vita has a real touchscreen, so the DS touch
   screen can be touched.
 
-Speed is a genuine open question rather than an assumed win. The PSP build runs at around 30 fps with a
+Speed is a genuine open question rather than an assumed win. The PSP build reached around 30 fps with a
 hand-tuned GE backend; a Cortex-A9 at 444 MHz is far ahead of a 333 MHz Allegrex on the CPU side, but
-the first Vita renderer will not be as tuned as the GE one is, and nothing here has run on hardware yet.
+the first Vita renderer will not be as tuned as that GE one was, and nothing here has run on hardware
+yet.
 
 ## What is proven
 
 Everything in this section was built and linked with the pinned toolchain.
 
-- **The toolchain.** `scripts/toolchain-vita.sh` downloads one immutable `vitasdk/autobuilds` snapshot,
+- **The toolchain.** `scripts/toolchain.sh` downloads one immutable `vitasdk/autobuilds` snapshot,
   SHA-256 verified against that release's own `SHA256SUMS`, into `.cache/vitasdk` — the same shape as
   `scripts/toolchain.sh` does for PSPDEV. It deliberately does not use `vdpm` or
   `bootstrap-vitasdk.sh`: both resolve a channel through `vitasdk.org`, which makes the compiler you get
   depend on when you ran the build, and the point of pinning is that it does not.
-- **The GPU dependencies.** `scripts/deps-vita.sh` builds vitaGL and math-neon at pinned commits into
+- **The GPU dependencies.** `scripts/deps.sh` builds vitaGL and math-neon at pinned commits into
   the toolchain. vitaGL is not the renderer's target (see the decision below), but it is how the port
   currently proves the GPU offers the texture formats the DS compositor needs.
   `port/vita/shark_stub.c` answers its runtime-shader-compiler calls with "no compiler", so vitaGL
@@ -49,7 +50,7 @@ Everything in this section was built and linked with the pinned toolchain.
 - **Packaging.** `arm-vita-eabi-gcc -Wl,-q` → `vita-elf-create` → `vita-make-fself` → `vita-pack-vpk`
   produces a loadable VPK. Proven with the vitaGL feature check, not yet wired into a build.
 
-- **The game's own code, compiled for ARM.** `./build-vita.sh game` (scripts/vita.sh) fetches the
+- **The game's own code, compiled for ARM.** `./build.sh game` (scripts/game.sh) fetches the
   pinned decompilation, stages the tree for ARM, generates the decompilation's headers, compiles the DS
   SDK replacement, and then compiles **all 1016 of the game's C files: 1016 / 1016, no failures.** The
   output is real ARMv7 Thumb-2 objects. This was the largest unknown in the project and it is now
@@ -58,17 +59,20 @@ Everything in this section was built and linked with the pinned toolchain.
 Run it with:
 
 ```sh
-./build-vita.sh setup     # pinned VitaSDK + vitaGL, about 100 MB, one time
-./build-vita.sh check     # the checks that need no ROM
-./build-vita.sh game      # the SDK and the game's own code, compiled for ARM
+./build.sh setup     # pinned VitaSDK + vitaGL, about 100 MB, one time
+./build.sh check     # the checks that need no ROM
+./build.sh game      # the SDK and the game's own code, compiled for ARM
 ```
 
 `check` fetches libntr (the DS SDK replacement) because the platform layer is compiled against its
 headers.
 
-The PSP build (`./build.sh`) is **no longer a maintained target**. Its scripts are still present and
-the build machinery is still target-selectable (`PSPOKE_TARGET=psp`), but nothing verifies it any more
-and the Vita is now the default. Removing it outright is a separate decision.
+The PSP build is **gone**. Its entry point, build scripts, PSPDEV toolchain download, EBOOT loader
+audit, memory-stick installer, emulator probes and test suite have been removed, along with the
+PSP-only variables and libraries in every component Makefile. There is one target and one way to build.
+What remains of that lineage is the code being ported -- the sceGu renderer in `port/native-stack-render`
+and the sceSasCore audio backend in `port/native-audio-sound` -- kept because they are the reference
+the GXM and audio work is being ported *from*, not because anything builds them.
 
 ## What compiling the game for ARM turned up
 
@@ -84,7 +88,7 @@ is the kind of problem that does not announce itself.
   load-bearing** and is set for the whole Vita build in `scripts/stage.sh`.
 - **libntr wants SDL.** On any target that is not `SDK_BUILD_ARM` its OS headers declare mutexes,
   alarms and threads in terms of SDL types. That is libntr's property, not the PSP's. VitaSDK ships no
-  SDL, so `port/vita/sdl2-shim` declares the handful of names libntr refers to and `scripts/deps-vita.sh`
+  SDL, so `port/vita/sdl2-shim` declares the handful of names libntr refers to and `scripts/deps.sh`
   installs them where the toolchain looks. Some of those declarations are deliberately never
   implemented: they belong to libntr modules (`os_thread.c`, `os_mutex.c`, `os_alarm.c`, `os_tick.c`,
   `os_message.c`, `fs_file.c`) that this port replaces and that `filter-sdk.py` drops before the link.
@@ -111,10 +115,10 @@ has no Vita counterpart -- and the per-overlay ROM bounds table needs your ROM.
 
 ## Verifying against emulated hardware
 
-`tests/vita/vita3k.sh` (or `./build-vita.sh emu-check`) builds `tests/vita/ds_runtime.c` into a VPK,
+`tests/vita/vita3k.sh` (or `./build.sh emu-check`) builds `tests/vita/ds_runtime.c` into a VPK,
 boots it in the [Vita3K](https://vita3k.org) emulator and reads back the report the test writes to
 `ux0:data`. It downloads the emulator itself (about 65 MB) and takes a couple of minutes, which is why
-it is separate from `./build-vita.sh check`.
+it is separate from `./build.sh check`.
 
 This is the difference between believing the platform layer works and knowing it. 27 checks run, and
 the ones that matter are the ones a compiler cannot reach:
@@ -306,7 +310,7 @@ written.
   `port/vita/shark_stub.c` keeps its job -- vitaGL's runtime compiler is still not linked, because the
   vitaGL feature check has no use for it -- but the port as a whole no longer claims to need nothing
   from the firmware.
-- **vitaGL stops being a dependency of the renderer**, but `scripts/deps-vita.sh` should not be removed
+- **vitaGL stops being a dependency of the renderer**, but `scripts/deps.sh` should not be removed
   yet: `tests/vita/vitagl_features.c` is currently how the port proves the GPU offers paletted textures,
   stencil and render-to-texture, and that check wants replacing with the GXM equivalents rather than
   simply deleting.
@@ -353,14 +357,14 @@ bound and has no Vita counterpart — that check simply goes away, along with th
 
 | Piece | State |
 |---|---|
-| Pinned VitaSDK toolchain | Done (`scripts/toolchain-vita.sh`) |
-| vitaGL and math-neon, no `libshacccg.suprx` needed | Done (`scripts/deps-vita.sh`, `port/vita/shark_stub.c`) |
+| Pinned VitaSDK toolchain | Done (`scripts/toolchain.sh`) |
+| vitaGL and math-neon, no `libshacccg.suprx` needed | Done (`scripts/deps.sh`, `port/vita/shark_stub.c`) |
 | Platform layer: arena, tick, interrupts, threads, alarms, touch, clock | Done; 27 runtime checks pass in Vita3K |
 | Build machinery: one tree, target-selected toolchain and flags | Done (`scripts/stage.sh` placeholders, `port/build/vita.mak`) |
 | DS SDK replacement compiled for ARM | Done: 270/271, and the one failure is a module the filter drops |
 | The game's own 1016 C files compiled for ARM | Done: 1016/1016 |
 | Link step: overlay layout, VPK output | Not started; needs a linker script and the renderer |
-| Runtime checks in the Vita3K emulator | Done (`./build-vita.sh emu-check`) |
+| Runtime checks in the Vita3K emulator | Done (`./build.sh emu-check`) |
 | VPK packaging path | Proven, not wired into a build |
 | Renderer | Native GXM backend chosen, shaders compiled on the console; not written |
 | Audio (`sceSasCore` replacement) | Not started |

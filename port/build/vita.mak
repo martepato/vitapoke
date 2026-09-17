@@ -1,20 +1,10 @@
 # vitapoke: the Vita build's make fragment.
 #
-# VitaSDK has no equivalent of PSPSDK's lib/build.mak, so this provides the same conventions the
-# component Makefiles in port/ are written against: the tool variables, INCDIR folded into CFLAGS, and
-# pattern rules for C, C++ and assembly. Component Makefiles set TARGET/OBJS/CFLAGS/INCDIR and include
-# this last, exactly as they do for the PSP.
+# This provides the conventions the component Makefiles in port/ are written against: the tool
+# variables, INCDIR folded into CFLAGS, and pattern rules for C, C++ and assembly.
 #
-# What it deliberately does not reproduce:
-#   - EBOOT.PBP and BUILD_PRX. A Vita executable is built by a different chain (see the vpk rule
-#     below), and the components that name EBOOT.PBP are standalone PSP probes; the real build only
-#     ever asks them for object files.
-#   - PSP_LARGE_MEMORY, which has no meaning on a console with 512 MB.
-#
-# The PSP toolchain is never referenced. PSPSDK is defined only so that the `$(subst
-# $(PSPSDK)/lib/linkfile.prx,...)` lines a few Makefiles run after this include stay harmless: the
-# pattern cannot occur, so the substitution does nothing.
-PSPSDK = /nonexistent-on-vita
+# Components set TARGET/OBJS/CFLAGS/INCDIR and include this last. Most of them exist only to produce
+# object files for the app link, and `make <name>.o` is all the build asks of them.
 
 PREFIX  = @TOOLBIN@
 CC      = $(PREFIX)gcc
@@ -33,8 +23,7 @@ VITA_MAKE_FSELF = $(dir $(PREFIX))vita-make-fself
 VITA_MKSFOEX    = $(dir $(PREFIX))vita-mksfoex
 VITA_PACK_VPK   = $(dir $(PREFIX))vita-pack-vpk
 
-# The same convention as PSPSDK: INCDIR is a list of directories, and the component's own directory is
-# always on the path.
+# INCDIR is a list of directories; the component's own directory is always on the path.
 INCDIR := $(INCDIR) .
 CFLAGS := $(addprefix -I,$(INCDIR)) $(CFLAGS)
 CXXFLAGS := $(addprefix -I,$(INCDIR)) $(CXXFLAGS)

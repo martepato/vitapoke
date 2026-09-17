@@ -10,7 +10,7 @@
  
          GenerateFontHalfRowLookupTable(printer->template.fgColor, printer->template.bgColor, printer->template.shadowColor);
  
-+#if PSPOKE_QOL_INSTANT_TEXT
++#if VITAPOKE_QOL_INSTANT_TEXT
 +        // SS QoL instant text: render every glyph of the current page in one frame, at every text speed.
 +        // Stops at anything that is not a plain glyph (button waits, scrolls, timed 0x201 pauses, callbacks
 +        // asking to pause), so input waits and scripted timing behave exactly as before.
@@ -40,13 +40,13 @@
              if (printer->callback != NULL) {
                  printer->unk2D = printer->callback(&printer->template, printer->unk2E);
 -            }
-+#if PSPOKE_QOL_INSTANT_TEXT
++#if VITAPOKE_QOL_INSTANT_TEXT
 +                if (printer->unk2D != 0) {
 +                    break;
 +                }
 +#endif
 +            }
-+#if PSPOKE_QOL_INSTANT_TEXT
++#if VITAPOKE_QOL_INSTANT_TEXT
 +            if (result != RENDER_PRINT || printer->state != 0) {
 +                break;
 +            }
@@ -58,7 +58,7 @@
 -        }
 +#endif
 +        }
-+#if PSPOKE_QOL_INSTANT_TEXT
++#if VITAPOKE_QOL_INSTANT_TEXT
 +        if (printed) {
 +            CopyWindowToVram(printer->template.window);
 +        }
@@ -79,7 +79,7 @@
          itemId = ITEM_NONE;
      }
      switch (attrno) {
-+#if PSPOKE_QOL_TRADE_EVOS
++#if VITAPOKE_QOL_TRADE_EVOS
 +    case ITEMNARC_PARAM: {
 +        ItemData *itemData = AllocAndReadWholeNarcMemberByIdPair(NARC_itemtool_itemdata_item_data, sItemNarcIds[itemId][ITEMNARC_PARAM], heapID);
 +        // SS QoL (Sacred Gold/Storm Silver evolution changes): trade-with-item evolutions are done by
@@ -125,7 +125,7 @@
                  }
                  break;
              case EVO_FRIENDSHIP_DAY:
-+#if PSPOKE_QOL_TRADE_EVOS
++#if VITAPOKE_QOL_TRADE_EVOS
 +                // SS QoL (Drayano, Renegade Platinum evolution changes): timed friendship evolutions
 +                // (Budew, Riolu, Chingling) only need happiness. Eevee keeps day=Espeon / night=Umbreon.
 +                if ((species != SPECIES_EEVEE || IsNighttime() == 0) && friendship >= 220) {
@@ -137,7 +137,7 @@
                  }
                  break;
              case EVO_FRIENDSHIP_NIGHT:
-+#if PSPOKE_QOL_TRADE_EVOS
++#if VITAPOKE_QOL_TRADE_EVOS
 +                if ((species != SPECIES_EEVEE || IsNighttime() == 1) && friendship >= 220) {
 +#else
                  if (IsNighttime() == 1 && friendship >= 220) {
@@ -149,7 +149,7 @@
                  }
                  break;
              case EVO_TRADE:
-+#if PSPOKE_QOL_TRADE_EVOS
++#if VITAPOKE_QOL_TRADE_EVOS
 +                // SS QoL: Kadabra/Machoke/Graveler/Haunter evolve at Lv. 36 (Drayano's Renegade Platinum
 +                // value; Sacred Gold/Storm Silver use a custom "Covenant Orb" item that the ROM lacks).
 +                if (level >= 36) {
@@ -164,7 +164,7 @@
      case EVOCTX_ITEM_CHECK:
      case EVOCTX_ITEM_USE:
          for (i = 0; i < 7; i++) {
-+#if PSPOKE_QOL_TRADE_EVOS
++#if VITAPOKE_QOL_TRADE_EVOS
 +            // SS QoL (Sacred Gold/Storm Silver): use the trade item from the Bag like an evolution stone
 +            // (Poliwhirl, Slowpoke, Onix, Rhydon, Seadra, Scyther, Electabuzz, Magmar, Porygon, Porygon2,
 +            // Dusclops, Clamperl). The party menu consumes the item exactly as for a stone.
@@ -204,7 +204,7 @@
  static void ovFieldMain_AddTextPrinterParameterized(MessageBox *messageBox, FontID fontId) {
      *(messageBox->textPrinterNumPtr) = AddTextPrinterParameterized(messageBox->window, fontId, messageBox->message, 0, 0, 0, NULL);
  }
-+#if PSPOKE_QOL_REPEL_PROMPT
++#if VITAPOKE_QOL_REPEL_PROMPT
 +
 +// SS QoL repel re-use prompt (script bytecode in script_manager.c, commands 853/854 in script_cmd_table.h).
 +static u16 sSSRepelItem = ITEM_NONE;
@@ -280,7 +280,7 @@
      return ctx;
  }
  
-+#if PSPOKE_QOL_REPEL_PROMPT
++#if VITAPOKE_QOL_REPEL_PROMPT
 +// SS QoL repel re-use prompt. Same as scr_seq_0003_022 (PlaySE SEQ_SE_DP_SELECT, LockAll, NPCMsg 65
 +// "Repel's effect wore off...", WaitABPress) plus: SSRepelAsk (853: "Use another <item>?" when the Bag has
 +// one, else skips the next command), YesNo VAR_SPECIAL_RESULT, SSRepelUse (854), CloseMsg, ReleaseAll, End.
@@ -305,7 +305,7 @@
      r6 = LoadScriptsAndMessagesByMapId(fieldSystem, ctx, scriptId);
      SetupBytecodeScript(ctx, ctx->mapScripts);
      ScriptRunByIndex(ctx, r6);
-+#if PSPOKE_QOL_REPEL_PROMPT
++#if VITAPOKE_QOL_REPEL_PROMPT
 +    if (scriptId == std_repel_wore_off) {
 +        // SS QoL: run the repel re-use prompt instead of the ROM's script (message bank msg_0040 stays loaded).
 +        SetupBytecodeScript(ctx, sSSRepelWoreOffScript);
@@ -319,7 +319,7 @@
 @@ -1,4 +1,10 @@
  #include "script.h"
 +#include "pspoke_qol.h"
-+#if PSPOKE_QOL_REPEL_PROMPT
++#if VITAPOKE_QOL_REPEL_PROMPT
 +
 +BOOL ScrCmd_SSRepelAsk(ScriptContext *ctx);
 +BOOL ScrCmd_SSRepelUse(ScriptContext *ctx);
@@ -331,7 +331,7 @@
      ScrCmd_BufferSealNamePlural,
      ScrCmd_Capitalize,
      ScrCmd_BufferDeptStoreFloorNo,
-+#if PSPOKE_QOL_REPEL_PROMPT
++#if VITAPOKE_QOL_REPEL_PROMPT
 +    ScrCmd_SSRepelAsk, // 853 SS QoL repel re-use prompt
 +    ScrCmd_SSRepelUse, // 854
 +#endif
@@ -344,7 +344,7 @@
  
  BOOL MoveIsHM(u16 moveId) {
      u8 i;
-+#if PSPOKE_QOL_FORGET_HMS
++#if VITAPOKE_QOL_FORGET_HMS
 +    // SS QoL: HM moves can be forgotten like any other move (summary screen, level-up and TM prompts all
 +    // ask here). The party menu's "do not consume an HM" check uses the item id instead (party_menu_items.c).
 +    (void)i; (void)moveId;
@@ -365,7 +365,7 @@
      data = GetMoveMaxPP(partyMenu->args->moveId, 0);
      SetMonData(mon, MON_DATA_MOVE1_PP + moveIdx, &data);
      if (partyMenu->args->itemId != ITEM_NONE) {
-+#if PSPOKE_QOL_FORGET_HMS
++#if VITAPOKE_QOL_FORGET_HMS
 +        if (partyMenu->args->itemId < ITEM_HM01 || partyMenu->args->itemId > ITEM_HM08) { // SS QoL: MoveIsHM is always FALSE
 +#else
          if (!MoveIsHM(partyMenu->args->moveId)) {
@@ -385,7 +385,7 @@
  
  #include "filesystem.h"
  
-+#if PSPOKE_QOL_MOVE_BUFFS
++#if VITAPOKE_QOL_MOVE_BUFFS
 +/* SS QoL: field-move buffs, applied to the in-RAM copy of the move table (the ROM is untouched).
 +   Cut 50 -> 60 power, 95 -> 100 accuracy; Rock Smash 40 -> 60 power; Whirlpool 15 -> 35 power,
 +   70 -> 85 accuracy (Whirlpool = its Black/White values). Move ids are the same in every Gen 4 game. */
@@ -400,7 +400,7 @@
 +
  void LoadMoveTbl(MoveTbl *dest) {
      ReadFromNarcMemberByIdPair(dest, NARC_poketool_waza_waza_tbl, 0, 0, (NUM_MOVES + 1) * sizeof(MoveTbl));
-+#if PSPOKE_QOL_MOVE_BUFFS
++#if VITAPOKE_QOL_MOVE_BUFFS
 +    for (u16 moveId = 0; moveId <= NUM_MOVES; moveId++) {
 +        PSPQoL_ApplyMoveBuffs(moveId, &dest[moveId]);
 +    }
@@ -412,7 +412,7 @@
  
  void LoadMoveEntry(u16 moveId, MoveTbl *moveTbl) {
      ReadWholeNarcMemberByIdPair(moveTbl, NARC_poketool_waza_waza_tbl, moveId);
-+#if PSPOKE_QOL_MOVE_BUFFS
++#if VITAPOKE_QOL_MOVE_BUFFS
 +    PSPQoL_ApplyMoveBuffs(moveId, moveTbl);
 +    {
 +        static int logged;

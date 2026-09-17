@@ -19,7 +19,7 @@ name, and can be left out at build time:
 The flags only change code that runs in RAM: your ROM is never modified and the save format is the same, so a save
 moves freely between builds with different switches (a Pokémon that evolved under `--trade-evos` stays evolved).
 The switches are `#define`s in a generated header (`pspoke_qol.h`), and every change in the source is wrapped in
-`#if PSPOKE_QOL_...` so you can find them: `patches/platinum/qol-overlay-sources.patch` and
+`#if VITAPOKE_QOL_...` so you can find them: `patches/platinum/qol-overlay-sources.patch` and
 `patches/soulsilver/qol.patch`.
 
 ## Instant text
@@ -31,7 +31,7 @@ want the game exactly as it was.
 
 ## Trade evolutions without trading
 
-The PSP has no link cable or Wi-Fi, so the Pokémon that only evolve by trading could never evolve. The rules below
+There is no link cable or Wi-Fi here, so the Pokémon that only evolve by trading could never evolve. The rules below
 follow Drayano's Renegade Platinum (Platinum) and Sacred Gold / Storm Silver (SoulSilver) documentation where the
 ROM has the items to support it. Nothing else about evolution changes.
 

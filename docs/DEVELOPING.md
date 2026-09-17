@@ -4,11 +4,10 @@
 
 | Path | What it is |
 |---|---|
-| `build.sh` | PSP entry point: ROM check, then `scripts/<game>.sh`. No longer maintained. |
-| `build-vita.sh` | Entry point for the PS Vita port, which is the maintained target (`setup`, `check`, `game`, `emu-check`, `clean`); see [docs/VITA.md](VITA.md). |
-| `scripts/vita.sh` | The Vita build: stage for ARM, generate headers, compile the SDK and the game's own code. |
-| `port/build/` | The per-console make fragment each component Makefile includes (`vita.mak`, `psp.mak`). |
-| `scripts/` | Build steps (`fetch.sh`, `stage.sh`, `platinum.sh`, ...), `prereqs.sh` (checks git/python3/make/patch/rsync/curl/tar and offers to install what is missing; `PSPPOKE_ASSUME_YES=1` skips the prompt), `install.sh`, `make_save.py`, `check_native_pbp.py` (PSP loader limits). |
+| `build.sh` | The entry point (`setup`, `check`, `game`, `emu-check`, `clean`); see [docs/VITA.md](VITA.md). |
+| `scripts/game.sh` | The Vita build: stage for ARM, generate headers, compile the SDK and the game's own code. |
+| `port/build/` | `vita.mak`, the make fragment every component Makefile includes. |
+| `scripts/` | `toolchain.sh` (pinned VitaSDK), `deps.sh` (vitaGL, math-neon, the SDL declarations libntr wants), `fetch.sh` (pinned upstream sources), `stage.sh` (lays out the build tree), `game.sh` (the build), `prereqs.sh` (checks host tools and offers to install what is missing; `VITAPOKE_ASSUME_YES=1` skips the prompt), `make_save.py`, `png_embed.py`, `sdk_archive.py`. |
 | `port/` | pspoke's own code, laid out as the build tree expects (`port/<component>/...`). |
 | `port/vita/` | The Vita platform layer: the DS interfaces (`OS_*`, `TP_*`, `RTC_*`) implemented on psp2. `os_core.c` (arena, tick, interrupts), `os_thread.c`, `os_alarm.c`, `input.c` (pad and the real touchscreen), `sdl_sync.c` + `sdl2-shim/` (the few SDL types libntr's headers want), `shark_stub.c` (keeps vitaGL from needing a runtime shader compiler). |
 | `patches/` | Patches applied to the downloaded decompilations and to generated per-overlay source copies. |
@@ -18,53 +17,65 @@
 | `tests/vita/` | Vita checks that need no ROM: `run.sh` compiles and links the DS interfaces the platform layer implements, `vita3k.sh` runs them in the Vita3K emulator. |
 | `third_party/melonDS/` | The four melonDS headers the renderer includes (GPL-3.0). |
 | `.cache/upstream/` | Downloaded pinned sources (created by the build). |
-| `.cache/vitasdk/` | Downloaded pinned VitaSDK plus vitaGL (created by `./build-vita.sh setup`). |
+| `.cache/vitasdk/` | Downloaded pinned VitaSDK plus vitaGL (created by `./build.sh setup`). |
 | `.work/tree/` | The staged build tree shared by both games (created by the build; safe to delete). |
-| `dist/` | Built EBOOTs. |
+| `dist/` | Where a built VPK will land; nothing does yet (the link step is unwritten). |
 
 Main components in `port/` (Platinum):
 
-- `native-audio-app/`: the PSP program. `main.c` (boot, ROM and save paths), `frame.c` (frame loop, pacing, DEV logging),
-  `input.c`, `osk.c`/`naming_osk.c` (PSP on-screen keyboard for name entry), `platform.c`, `services/` (file system from
-  the ROM, DMA, locks, power). `overlays/` turns the game's DS overlays into native modules (`generate.py`, `build.py`,
-  `internal.py`, `gen-link.py`). `sdk-g3stack/` holds patched SDK sources (immediate 3D commands without malloc).
-- `native-stack-render/`: the DS 3D-to-PSP-GPU renderer (display-list cache, fixed-point fast paths, pipelined present,
-  texture change detection from VRAM writes: `native-audio-app/vram_dirty.c` + `opttex_redirect.py`).
+- `native-audio-app/`: the application. `main.c` (boot, ROM and save paths), `frame.c` (frame loop, pacing,
+  DEV logging), `input.c`, `osk.c`/`naming_osk.c` (on-screen keyboard for name entry; to be ported to
+  `sceIme`), `platform.c`, `services/` (file system from the ROM, DMA, locks, power). `overlays/` turns the
+  game's DS overlays into native modules (`generate.py`, `build.py`, `internal.py`, `gen-link.py`).
+  `sdk-g3stack/` holds patched SDK sources (immediate 3D commands without malloc). The parts of this that
+  still speak to the PSP -- `main.c`, `frame.c`, `platform.c`, `input.c` -- have native counterparts in
+  `port/vita/` and are the ones the link step has to switch over.
+- `native-stack-render/`: the DS-to-GPU renderer, written against the PSP's GE (display-list cache,
+  fixed-point fast paths, pipelined present, texture change detection from VRAM writes:
+  `native-audio-app/vram_dirty.c` + `opttex_redirect.py`). **Not built.** It is kept as the reference the
+  GXM backend is being ported from; see [VITA.md](VITA.md).
 - `native-render-opt/`: melonDS-derived 2D engine (`GPU2D_Soft.cpp`, `native_gpu.cpp`).
 - `native-probe/`: header generators, register/memory backing, network/internal library compile scripts, particle fix.
-- `native-audio-sound/`, `native-audio-probe/`: DS sound engine; `sas_out.c` plays its channels through the PSP sceSasCore
-  voice mixer (no CPU mixing).
+- `native-audio-sound/`, `native-audio-probe/`: DS sound engine. `sas_out.c` plays its channels through the
+  PSP's sceSasCore voice mixer, which the Vita does not have; that file is the reference for the
+  replacement backend and is **not built**.
 - Small services: `native-threads`, `native-alarms`, `native-offline`, `native-sdl-thread`, `native-cadence`,
   `native-memory-probe`, `native-backup-probe` (save file), `native-sdk-probe` (SDK compile).
 
-SoulSilver components in `port/` (it reuses the SDK, services and renderer core above):
+SoulSilver components in `port/` (it reuses the SDK, services and renderer core above). **SoulSilver has
+no Vita build driver yet**: `scripts/game.sh` builds Platinum, and the equivalent for SoulSilver is still
+to be written.
 
 - `soulsilver-native-core/`: `prepare.py`/`finish_headers.py`/`final_compat.py` make a compilable copy of the
-  pokeheartgold-slop sources (then `patches/soulsilver/*.patch` apply pspoke's game changes); `crossprobe.py` +
-  `archive.py` compile all 529 game files. `nitromain-perf/` is the PSP program (`main.c`, `frame.c`, `input.c`,
-  `osk.c`, native ports of hot functions, `linkfile.prx` with the `.native.backing` split for the 32 MiB loader limit).
+  pokeheartgold-slop sources (then `patches/soulsilver/*.patch` apply the game changes); `crossprobe.py` +
+  `archive.py` compile all 529 game files. `nitromain-perf/` is the application (`main.c`, `frame.c`,
+  `input.c`, `osk.c`, native ports of hot functions, and `linkfile.prx` with the `.native.backing` split
+  for the PSP loader's 32 MiB limit -- a constraint that goes away with that console).
 - `soulsilver-native-overlays/build_registry.py`: splits game/data objects per DS overlay using your ROM's overlay table.
-- `soulsilver-native-data/`: converts the decompilation's assembly data to PSP objects (`python/` bundles ndspy).
+- `soulsilver-native-data/`: converts the decompilation's assembly data to objects (`python/` bundles ndspy).
 - `soulsilver-native-codegen/`, `soulsilver-native-play/maploader/`: translate not-yet-decompiled ARM assembly from the
   decompilation into C (`library.py`, `port.py`; seeds and ABI notes in the JSON files).
 - Smaller native ports: `soulsilver-native-{player-movement,menu-sprites,window,sound-helpers,islands,particles,billboards}`,
   `soulsilver-native-assets/fade-port/wipe-candidate` (screen wipes) and `render-fastcompare` (SoulSilver renderer variant).
 - `native-sound-audio/`: SoulSilver's sound backend (same sceSasCore output, `sas_out.c`).
 
-Folder names are historical (each started as an isolated proof); build scripts rely on this relative layout.
+Folder names are historical (each started as an isolated proof); build scripts rely on this relative
+layout. So are the `PSP_NATIVE_*` macros and `PSPNative*` function names throughout `port/` -- they are
+just names now, and renaming them is a mechanical pass nobody has spent the churn on.
 
-## Targets
+## Staging and the toolchain
 
-One source tree builds for either console. `PSPOKE_TARGET` (`vita`, the default, or `psp`) selects
-which, and `scripts/stage.sh` fills the difference into the staged tree as placeholders: `@TOOLBIN@`
-(the toolchain's tool prefix), `@TARGETCC@` (flags that only make sense for one CPU), `@SDKBUILD@`,
-`@BUILDMAK@` (the make fragment in `port/build/`), `@SDKINC@` and `@PRXLINKFILE@`. `scripts/common.sh`
-derives `TOOLBIN` for build steps that run outside the staged tree. Nothing in `port/` names one
-console's compiler.
+`scripts/stage.sh` copies `port/` into the build tree and fills in the placeholders that carry
+build-time paths and target flags into the staged sources: `@WORK@`, `@TOOLBIN@` (the toolchain's tool
+prefix), `@TARGETCC@` (the flags the whole build needs -- read the note there, `-fno-short-enums` is
+load-bearing), `@SDKBUILD@`, `@BUILDMAK@` (`port/build/vita.mak`), `@SDKINC@` and `@OVERLAYLD@`.
+`scripts/common.sh` derives `TOOLBIN` for the steps that run outside the staged tree. Nothing in
+`port/` names the compiler.
 
 ## Dev vs normal builds
 
-`./build.sh <game> --rom ... --dev` passes `DEV=1` to the renderer and app Makefiles:
+`DEV=1` passed to the renderer and app Makefiles turns on the instrumented build. The names below are
+historical; they are the port's own macros, not PSP ones:
 
 - `PSP_NATIVE_DEV`: on-screen counter (`NATIVE xx.x fps game/audio/render ms`), per-30-frame timing collection,
   `[FPS]`/`[PERF]`/`[GEASYNC]` lines in `native-memlog.txt` every 600 frames.
@@ -72,42 +83,37 @@ console's compiler.
   only: the SoulSilver Makefile has no `GAME_PROF`.
 - `PSP_NATIVE_G3_HWPROF` (Platinum renderer): sampled `[G3HW]` 3D profile.
 
+There is no `--dev` switch on `./build.sh` yet; the link step it would apply to does not exist.
+
 Normal builds define none of these; error and startup lines are still logged. Use `#ifdef PSP_NATIVE_DEV` for any new
 debug output. printf is invisible on real hardware, so log through `PSPNativeMemLog`.
 
 ## Iterating
 
-After a full build, edit files directly in `.work/tree/test_out/...` and rerun `./build.sh`: finished phases are
-skipped via `.work/tree/.stamp-*` files (delete a stamp to redo that phase), and the renderer and app are always
-relinked. Copy changes back into `port/` (or turn decompilation changes into a patch in `patches/`) before committing.
-If you edit `port/` directly instead, run `./build.sh clean` before rebuilding (downloads in `.cache` are kept): staging
-copies `port/` with its original timestamps, so an already-built object can look newer than your change and be reused.
+After a full build, edit files directly in `.work/vita/test_out/...` and rerun `./build.sh game`: finished
+phases are skipped via `.work/vita/.stamp-*` files (delete a stamp to redo that phase). Copy changes back
+into `port/` (or turn decompilation changes into a patch in `patches/`) before committing. If you edit
+`port/` directly instead, run `./build.sh clean` first (downloads in `.cache` are kept): staging copies
+`port/` with its original timestamps, so an already-built object can look newer than your change and be
+reused.
 
 ## Tests
 
-`tests/run.sh` builds each game, runs the loader audit and, with `PPSSPP_HEADLESS` set, replays recorded scenarios
-(menus, battles, evolutions, the QoL features) in headless PPSSPP and checks the game's log. Run it before a pull
-request; `tests/README.md` explains the scenarios, fixtures and how to add one.
-
-`tests/vita/run.sh` (or `./build-vita.sh check`) runs the Vita port's checks, which need no ROM: that
+`tests/vita/run.sh` (or `./build.sh check`) runs the Vita port's checks, which need no ROM: that
 every DS interface `port/vita` implements still compiles and links against libntr and psp2, and that
 the GPU still offers the paletted textures, stencil and render-to-texture the renderer design depends
 on. A VitaSDK or libntr bump is what this catches.
 
-`tests/vita/vita3k.sh` (or `./build-vita.sh emu-check`) runs the platform layer in the Vita3K emulator
+`tests/vita/vita3k.sh` (or `./build.sh emu-check`) runs the platform layer in the Vita3K emulator
 and checks what it does rather than that it builds: thread serialisation under the DS execution lock
 (with an unlocked control, so the test can fail), sleep/wake, alarms, and the psp2 semantics the design
 rests on. It downloads the emulator and takes a couple of minutes.
 
-Other checks:
-- `python3 scripts/check_native_pbp.py dist/.../EBOOT.PBP`: the retail PSP loader rejects EBOOTs with a section ending
-  past 32 MiB (error 80020148). Every build runs this; PPSSPP does not enforce it.
-- Diagnostic make variables (test links only, never in `./build.sh` output): Platinum `WARP_TO=<map>,<x>,<z>`
-  (`diag_warp.c`) and `QOL_TEST`; SoulSilver `WARP_TO`, `NO_WILD`, `GIVE_SPECIES`, `REPEL_STEPS`, ... (see its
-  Makefile). `tests/run.sh` uses them to set scenes up.
-- One-off emulator runs: `run_probe.py` in `port/native-audio-app/` and `port/soulsilver-native-core/nitromain-perf/`
-  stage a throwaway memory stick and run the EBOOT (`--ppsspp`, `--rom`, `--save`/`--fixture`, `--seconds`;
-  SoulSilver also takes `--input-script` and `--frames`). Emulator timings say nothing about PSP speed.
+Diagnostic make variables still exist in the component Makefiles for test links -- Platinum
+`WARP_TO=<map>,<x>,<z>` (`diag_warp.c`) and `QOL_TEST`; SoulSilver `WARP_TO`, `NO_WILD`,
+`GIVE_SPECIES`, `REPEL_STEPS` -- but nothing drives them yet: the scenario suite that used them replayed
+recorded input in a PSP emulator and went with that console. Rebuilding an equivalent on Vita3K is open
+work, and `tests/fixtures/` keeps the synthetic saves those scenarios started from.
 
 ## Rules for contributions
 

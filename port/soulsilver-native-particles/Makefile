@@ -2,10 +2,5 @@ TARGET = ss-particle-proof
 OBJS = main.o spa.o glue.o backing.o mi_memory.o platform.o
 CFLAGS = -I@WORK@/soulsilver-native-particles/include -DNONMATCHING -DPM_KEEP_ASSERTS -DPSP_NATIVE_OFFLINE -DSOULSILVER -DENGLISH -DSDK_PORT -DSDK_X86 -DSDK_TS -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM -D@SDKBUILD@ -DSPLManager_New=SPL_Init -DSPLManager_LoadResources=SPL_Load -DSPLManager_UploadTexturesEx=SPL_LoadTexByCallbackFunction -DSPLManager_UploadPalettesEx=SPL_LoadTexPlttByCallbackFunction -DSPLManager_UploadTextures=SPL_LoadTexByVRAMManager -DSPLManager_UploadPalettes=SPL_LoadTexPlttByVRAMManager -DSPLManager_Update=SPL_Calc -DSPLManager_Draw=SPL_Draw -DSPLManager_CreateEmitter=SPL_Create -DSPLManager_CreateEmitterWithCallback=SPL_CreateWithInitialize -DSPLManager_DeleteEmitter=SPL_Delete -DSPLManager_DeleteAllEmitters=SPL_DeleteAll -DSPLBehavior_ApplyGravity=spl_calc_gravity -DSPLBehavior_ApplyRandom=spl_calc_random -DSPLBehavior_ApplyMagnet=spl_calc_magnet -DSPLBehavior_ApplySpin=spl_calc_spin -DSPLBehavior_ApplyCollisionPlane=spl_calc_scfield -DSPLBehavior_ApplyConvergence=spl_calc_convergence -DSDL_MAIN_HANDLED -O2 -include @WORK@/soulsilver-native-core/include/game-pack4.h -Wno-incompatible-pointer-types -DNONMATCHING -Wno-implicit-function-declaration -Wno-int-conversion @TARGETCC@ -std=gnu99 -include @WORK@/soulsilver-native-core/include/compat.h -DPM_KEEP_ASSERTS -DSOULSILVER -DENGLISH -DSDK_PORT -DSDK_X86 -DSDK_TS -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM -D@SDKBUILD@ -ffunction-sections -fdata-sections -I@WORK@/soulsilver-native-core/include -I@WORK@/soulsilver-native-core/game-include -I@WORK@/soulsilver-native-core/game-include/library -I@WORK@/soulsilver-native-core/src -I@WORK@/soulsilver-research/pokeheartgold-slop/files -I@WORK@/native-probe/generated -I@WORK@/native-probe/libntrsystem/include -I@WORK@/native-graphics/libntr/include
 LDFLAGS = -Wl,--gc-sections
-LIBS = -Wl,--start-group libss-particles.a ../native-next-app/libsdk-filtered.a -Wl,--end-group -lstdc++ -lpsppower -lpspgu -lpsprtc -lm
-BUILD_PRX = 1
-PSP_LARGE_MEMORY = 1
-EXTRA_TARGETS = EBOOT.PBP
-PSP_EBOOT_TITLE = SoulSilver sound helper proof
+LIBS = -Wl,--start-group libss-particles.a ../native-next-app/libsdk-filtered.a -Wl,--end-group -lstdc++ -lm
 include @BUILDMAK@
-LDFLAGS := $(subst $(PSPSDK)/lib/linkfile.prx,linkfile.prx,$(LDFLAGS))

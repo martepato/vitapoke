@@ -29,16 +29,15 @@ check(){ printf '    %-28s' "$1"; shift; if "$@" > "$OUT/$$.log" 2>&1; then echo
 
 log "Vita port checks"
 
-[ -x "$VITASDK/bin/arm-vita-eabi-gcc" ] || die "VitaSDK not found at $VITASDK. Run: ./build-vita.sh setup"
-[ -f "$VITASDK/arm-vita-eabi/lib/libvitaGL.a" ] || die "vitaGL not built. Run: ./build-vita.sh setup"
+[ -x "$VITASDK/bin/arm-vita-eabi-gcc" ] || die "VitaSDK not found at $VITASDK. Run: ./build.sh setup"
+[ -f "$VITASDK/arm-vita-eabi/lib/libvitaGL.a" ] || die "vitaGL not built. Run: ./build.sh setup"
 
 CFLAGS=(-O2 -mtune=cortex-a9 -mfpu=neon -Wl,-q -I"$ROOT/port/vita/include")
 STUBS=(-lSceDisplay_stub -lSceCtrl_stub -lScePower_stub -lSceRtc_stub -lSceTouch_stub
        -lSceAppMgr_stub -lSceNet_stub -lSceLibKernel_stub)
 
 # The platform layer: the DS interfaces the game and libntr call, implemented on psp2.
-# SDK_X86 is what the PSP build passes too: in libntr it means "not real DS hardware", and it selects
-# the same portable code paths on both consoles.
+# SDK_X86 means "not real DS hardware" to libntr, and selects its portable code paths.
 NITRO=(-DPM_KEEP_ASSERTS -DSDK_PORT -DSDK_X86 -DSDK_BUILD_VITA -DSDK_VERSION_MAJOR=4 -DSDK_TS
        -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM)
 PLATFORM=("$ROOT/port/vita/os_core.c" "$ROOT/port/vita/os_alarm.c" "$ROOT/port/vita/os_thread.c"

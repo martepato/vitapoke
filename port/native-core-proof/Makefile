@@ -4,7 +4,4 @@ INCDIR = ../native-probe/libntrsystem/include ../native-graphics/libntr/include 
 CFLAGS = -DPM_KEEP_ASSERTS -DSDK_PORT -DSDK_X86 -DSDK_TS -DSDK_4M -DSDK_FINALROM -O2 @TARGETCC@ -std=gnu99 -ffunction-sections -fdata-sections
 LIBS = ../native-sdk-probe/libnative-sdk-probe.a
 LDFLAGS = -Wl,--gc-sections
-BUILD_PRX = 1
-EXTRA_TARGETS = EBOOT.PBP
-PSP_EBOOT_TITLE = Native Platinum component proof
 include @BUILDMAK@
