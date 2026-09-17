@@ -116,3 +116,14 @@ VitaSDK:
   later.
 
 Neither runs; both are contract checks. See [docs/VITA.md](../docs/VITA.md).
+
+`tests/vita/vita3k.sh` (also `./build-vita.sh emu-check`) goes further and *runs* the platform layer,
+by building `ds_runtime.c` into a VPK, booting it in the Vita3K emulator and reading back the report it
+writes to `ux0:data`. It downloads the emulator (about 65 MB) and takes a couple of minutes, so it is
+not part of `run.sh`.
+
+It checks the things a compiler cannot: that the DS execution lock really serialises DS threads (with
+an unlocked control run to prove the test can fail), that a wake is not lost between a thread queueing
+itself and sleeping, that alarms fire and cancel, and that the psp2 semantics the design depends on are
+what the port assumes. Vita3K needs a display (Xvfb is fine), an OpenGL driver (llvmpipe is fine), and
+refuses to run as root; the script handles or reports each of those.

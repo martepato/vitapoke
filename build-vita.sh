@@ -2,6 +2,7 @@
 # vitapoke build entry point for the PS Vita. See docs/VITA.md.
 #   ./build-vita.sh setup     check requirements, download the pinned VitaSDK, build vitaGL
 #   ./build-vita.sh check     run the Vita checks that do not need a ROM (tests/vita/run.sh)
+#   ./build-vita.sh emu-check run the platform layer's runtime checks in the Vita3K emulator
 #   ./build-vita.sh clean     remove the Vita build output (downloads in .cache are kept)
 #
 # Building a game is not wired up yet: the port's GPU, audio and packaging layers are still being
@@ -32,14 +33,18 @@ case "$CMD" in
     [ -x "$VITASDK/bin/arm-vita-eabi-gcc" ] || die "VitaSDK not installed. Run: ./build-vita.sh setup"
     exec bash "$ROOT/tests/vita/run.sh"
     ;;
+  emu-check)
+    [ -x "$VITASDK/bin/arm-vita-eabi-gcc" ] || die "VitaSDK not installed. Run: ./build-vita.sh setup"
+    exec bash "$ROOT/tests/vita/vita3k.sh"
+    ;;
   clean)
-    rm -rf "$ROOT/.work/vita-tests" "$ROOT/dist/vita"
+    rm -rf "$ROOT/.work/vita-tests" "$ROOT/.work/vita-gen" "$ROOT/.work/vita3k" "$ROOT/dist/vita"
     log "Removed the Vita build output (downloads in .cache kept)"
     ;;
   platinum|soulsilver)
     die "the Vita build cannot build a game yet: the renderer, the audio backend and VPK packaging are still being written (see docs/VITA.md). ./build.sh $CMD --rom <file.nds> builds it for the PSP."
     ;;
   *)
-    die "usage: ./build-vita.sh setup|check|clean   (see docs/VITA.md)"
+    die "usage: ./build-vita.sh setup|check|emu-check|clean   (see docs/VITA.md)"
     ;;
 esac

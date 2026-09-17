@@ -38,10 +38,9 @@ Everything in this section was built and linked with the pinned toolchain.
 - **The GPU dependencies.** `scripts/deps-vita.sh` builds vitaGL and math-neon at pinned commits into
   the toolchain. vitaGL is not the renderer's target (see the decision below), but it is how the port
   currently proves the GPU offers the texture formats the DS compositor needs.
-  `port/vita/shark_stub.c` answers its runtime-shader-compiler calls with "no compiler", and the
-  application links `SceShaccCg` weakly, so nothing here obliges a player to extract
-  `libshacccg.suprx` from a firmware update. Keeping that true is a constraint on the renderer, not a
-  finished property of it.
+  `port/vita/shark_stub.c` answers its runtime-shader-compiler calls with "no compiler", so vitaGL
+  links without vitaShaRK. The renderer will need `libshacccg.suprx` for its own shaders -- see the
+  decision below -- but nothing in the checks does.
 - **The platform layer.** `port/vita` implements the DS interfaces the game and libntr call -- `OS_*`,
   `TP_*`, `RTC_*`, the pad registers -- directly on psp2. See **Where the boundary is** below for why
   that, and not the PSPSDK, is the line. `tests/vita/ds_surface.c` calls every one of them and is
@@ -61,6 +60,41 @@ Run it with:
 headers.
 
 `./build.sh platinum|soulsilver` still builds for the PSP and is unaffected.
+
+## Verifying against emulated hardware
+
+`tests/vita/vita3k.sh` (or `./build-vita.sh emu-check`) builds `tests/vita/ds_runtime.c` into a VPK,
+boots it in the [Vita3K](https://vita3k.org) emulator and reads back the report the test writes to
+`ux0:data`. It downloads the emulator itself (about 65 MB) and takes a couple of minutes, which is why
+it is separate from `./build-vita.sh check`.
+
+This is the difference between believing the platform layer works and knowing it. 27 checks run, and
+the ones that matter are the ones a compiler cannot reach:
+
+- **The DS execution lock does what it claims.** Two DS threads busy-loop while checking that nothing
+  else has taken over. The same two threads run first as plain psp2 threads with no lock, as a control:
+  **248 interleavings without the lock, 0 with it**. That number is the whole argument for the lock in
+  one line -- the race is real on this hardware, not theoretical, and the lock is what stops it. A test
+  that only reported 0 would prove nothing, because a machine that never interleaves scores 0 too.
+- **A wake is not lost** between a thread queueing itself and sleeping.
+- **Alarms** fire once, repeat when periodic, stay cancelled, and report `OS_PROCMODE_IRQ` inside the
+  handler.
+- **The psp2 semantics the design rests on**: an `SCE_KERNEL_MUTEX_ATTR_RECURSIVE` LwMutex really is
+  recursive, and `SCE_EVENT_WAITCLEAR` really does return immediately on an already-set flag and
+  consume it. Both were assumptions until this ran.
+
+Writing these found one real bug in the lock (`VitaOS_Release` returned a wrapped count) and one
+missing guard (`VitaOS_Leave` unlocked the mutex even when the caller did not hold it, which would have
+let two DS threads into DS code at once -- silently, and only sometimes).
+
+What it does not prove: Vita3K is not a console. Timing, thread scheduling and the touch panel are all
+approximations, and the renderer is not exercised at all yet. Anything that depends on real timing
+still needs hardware.
+
+Notes for anyone reproducing it: Vita3K has no tagged releases, only a rolling `continuous` build, so
+unlike the toolchain this cannot be pinned. It also refuses to run as root, needs a display (Xvfb is
+fine) and an OpenGL driver (llvmpipe is fine, since nothing here draws), and its AppImage expects
+`libOpenGL.so.0` and `libEGL.so.1` from the system. The script handles or reports each of those.
 
 ## Where the boundary is
 
@@ -206,16 +240,24 @@ compatibility layer, the packaging path and the checks are all independent of wh
 renderer uses -- but three things follow from the choice and should be settled before the renderer is
 written.
 
-- **Shaders are now the open problem.** GXM will not draw without compiled vertex and fragment programs,
-  and `psp2cgc` is Sony's and not freely distributable. vitaGL sidestepped this by shipping precompiled
-  `.gxp` blobs. Without it the options are: vendor precompiled `.gxp` blobs into the repository (they
-  cannot then be changed by anyone without the proprietary compiler, which sits badly with a GPL-3.0
-  project whose whole premise is that you build it yourself); require `libshacccg.suprx` on the console
-  and compile at runtime through `SceShaccCg` (which `port/vita/shark_stub.c` was specifically written
-  to avoid making players do); or find a third route. The shader set the compositor needs is small --
-  textured with a palette, textured modulated by vertex colour, flat colour, and the 3D pass -- which
-  makes vendoring blobs tractable, and makes the licensing question the deciding one rather than the
-  engineering.
+- **Shaders: compile them on the console through `SceShaccCg`.** GXM will not draw without compiled
+  vertex and fragment programs, and `psp2cgc` is Sony's and not freely distributable, so there is no
+  open-source path from shader source to a `.gxp`. That leaves two options: vendor prebuilt `.gxp`
+  blobs, or compile at runtime through `SceShaccCg`, which needs `libshacccg.suprx` extracted from a
+  firmware update.
+
+  Runtime compilation wins, and the deciding argument is not performance but the same one as the rest of
+  this project: vendored blobs could not be regenerated by anyone without the proprietary compiler, so
+  the shaders would be the one part of vitapoke you cannot actually build yourself. Compiling on the
+  console keeps them as source in the repository. `libshacccg.suprx` is already installed on most
+  custom-firmware consoles, the compiled programs can be cached on disk so the cost is paid once, and
+  `SceShaccCg` is linked weakly so a console without it gets a clear message naming what is missing
+  rather than a failure to load. Vita3K implements `sceShaccCgCompileProgram`, so this stays testable
+  in the emulator.
+
+  `port/vita/shark_stub.c` keeps its job -- vitaGL's runtime compiler is still not linked, because the
+  vitaGL feature check has no use for it -- but the port as a whole no longer claims to need nothing
+  from the firmware.
 - **vitaGL stops being a dependency of the renderer**, but `scripts/deps-vita.sh` should not be removed
   yet: `tests/vita/vitagl_features.c` is currently how the port proves the GPU offers paletted textures,
   stencil and render-to-texture, and that check wants replacing with the GXM equivalents rather than
@@ -265,9 +307,10 @@ bound and has no Vita counterpart — that check simply goes away, along with th
 |---|---|
 | Pinned VitaSDK toolchain | Done (`scripts/toolchain-vita.sh`) |
 | vitaGL and math-neon, no `libshacccg.suprx` needed | Done (`scripts/deps-vita.sh`, `port/vita/shark_stub.c`) |
-| Platform layer: arena, tick, interrupts, threads, alarms, touch, clock | Done, compile- and link-checked against libntr |
+| Platform layer: arena, tick, interrupts, threads, alarms, touch, clock | Done; 27 runtime checks pass in Vita3K |
+| Runtime checks in the Vita3K emulator | Done (`./build-vita.sh emu-check`) |
 | VPK packaging path | Proven, not wired into a build |
-| Renderer | Native GXM backend chosen; not written. Shader compilation is the open question above |
+| Renderer | Native GXM backend chosen, shaders compiled on the console; not written |
 | Audio (`sceSasCore` replacement) | Not started |
 | On-screen keyboard (`sceUtility` → `sceIme`) | Not started |
 | MIPS inline assembly | Not started |

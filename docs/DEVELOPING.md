@@ -5,7 +5,7 @@
 | Path | What it is |
 |---|---|
 | `build.sh` | Entry point: ROM check, then `scripts/<game>.sh`. |
-| `build-vita.sh` | Entry point for the PS Vita port (`setup`, `check`, `clean`); see [docs/VITA.md](VITA.md). |
+| `build-vita.sh` | Entry point for the PS Vita port (`setup`, `check`, `emu-check`, `clean`); see [docs/VITA.md](VITA.md). |
 | `scripts/` | Build steps (`fetch.sh`, `stage.sh`, `platinum.sh`, ...), `prereqs.sh` (checks git/python3/make/patch/rsync/curl/tar and offers to install what is missing; `PSPPOKE_ASSUME_YES=1` skips the prompt), `install.sh`, `make_save.py`, `check_native_pbp.py` (PSP loader limits). |
 | `port/` | pspoke's own code, laid out as the build tree expects (`port/<component>/...`). |
 | `port/vita/` | The Vita platform layer: the DS interfaces (`OS_*`, `TP_*`, `RTC_*`) implemented on psp2. `os_core.c` (arena, tick, interrupts), `os_thread.c`, `os_alarm.c`, `input.c` (pad and the real touchscreen), `sdl_sync.c` + `sdl2-shim/` (the few SDL types libntr's headers want), `shark_stub.c` (keeps vitaGL from needing a runtime shader compiler). |
@@ -13,7 +13,7 @@
 | `docs/QOL.md` | Every quality-of-life change, per Pokémon/item, and its build flag. |
 | `docs/INSTALL.md` | Prerequisites and per-platform install notes (macOS, Linux, Windows/WSL). |
 | `tests/` | Regression suite (`run.sh`), synthetic save fixtures, `tests/README.md`. |
-| `tests/vita/` | Vita checks that need no ROM: the DS interfaces the platform layer implements, and vitaGL's feature set, still compile and link. |
+| `tests/vita/` | Vita checks that need no ROM: `run.sh` compiles and links the DS interfaces the platform layer implements, `vita3k.sh` runs them in the Vita3K emulator. |
 | `third_party/melonDS/` | The four melonDS headers the renderer includes (GPL-3.0). |
 | `.cache/upstream/` | Downloaded pinned sources (created by the build). |
 | `.cache/vitasdk/` | Downloaded pinned VitaSDK plus vitaGL (created by `./build-vita.sh setup`). |
@@ -82,6 +82,11 @@ request; `tests/README.md` explains the scenarios, fixtures and how to add one.
 every DS interface `port/vita` implements still compiles and links against libntr and psp2, and that
 the GPU still offers the paletted textures, stencil and render-to-texture the renderer design depends
 on. A VitaSDK or libntr bump is what this catches.
+
+`tests/vita/vita3k.sh` (or `./build-vita.sh emu-check`) runs the platform layer in the Vita3K emulator
+and checks what it does rather than that it builds: thread serialisation under the DS execution lock
+(with an unlocked control, so the test can fail), sleep/wake, alarms, and the psp2 semantics the design
+rests on. It downloads the emulator and takes a couple of minutes.
 
 Other checks:
 - `python3 scripts/check_native_pbp.py dist/.../EBOOT.PBP`: the retail PSP loader rejects EBOOTs with a section ending

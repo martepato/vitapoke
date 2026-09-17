@@ -51,7 +51,12 @@ void VitaOS_Enter(void)
 
 void VitaOS_Leave(void)
 {
-	if (lockDepth && --lockDepth == 0)
+	/* Only unlock if this thread actually holds it. An unbalanced leave would otherwise unlock a
+	 * mutex owned by somebody else, which psp2 rejects and which would let two DS threads into DS
+	 * code at once -- the exact thing the lock exists to prevent, failing silently. */
+	if (!VitaOS_Held())
+		return;
+	if (--lockDepth == 0)
 		lockOwner = -1;
 	sceKernelUnlockLwMutex(&executionLock, 1);
 }
