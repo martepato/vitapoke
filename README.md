@@ -7,11 +7,15 @@ code is built for the Vita's ARM CPU and linked into a Vita application.
 
 > **It runs, and it is not playable yet.** This is a port in progress. The whole build works and
 > produces a VPK, and in the Vita3K emulator that VPK runs a real ROM: the game's startup, its
-> overlays, and its opening -- the copyright screen, the GAME FREAK logo, the Pokémon logo, in colour,
-> both screens -- all composed by this port's own renderer. What has *not* been tried is the GPU path
-> (it needs `libshacccg.suprx`, which that emulator does not have), the 3D, sound coming out of a
-> speaker, and any button press at all. See [docs/VITA.md](docs/VITA.md) for exactly what is known
-> and what is not.
+> overlays, its opening -- the copyright screen, the GAME FREAK logo, the Pokémon logo, in colour, on
+> both screens -- and then the **title screen**. Press START and A and it goes through the main menu
+> and **starts a new game**, into Professor Rowan's introduction, and keeps running there: fourteen
+> thousand frames at 30 frames a second with no assertion and no crash, all composed by this port's
+> own renderer, with the DS sound engine producing real audio and the geometry engine producing real
+> 3D geometry.
+> What has *not* run is the GPU: presenting those screens and rasterising that geometry both need
+> `libshacccg.suprx`, which that emulator does not have. Nothing has run on hardware. See
+> [docs/VITA.md](docs/VITA.md) for exactly what is known and what is not.
 >
 > vitapoke started as a port of [pspoke](https://github.com/IbrahimIrfan/pspoke), which does the same
 > thing for the PSP and is playable today. If you want to play rather than build, use that.
@@ -41,14 +45,16 @@ code is built for the Vita's ARM CPU and linked into a Vita application.
 | DS SDK replacement compiled for ARM | Works (270/271; the one failure is a module the build drops) |
 | The game's own 1016 C files compiled for ARM | Works (1016/1016) |
 | DS message queues, mutexes, the frame driver, the save file, the log | Works (compiles and links) |
-| Renderer: DS 2D composed in software, both screens on the display through vitaGL | Written; no game frame has reached it |
-| Renderer: DS 3D rasterised on the GPU | Written; unverified |
-| Audio: the DS mixer through `sceAudioOut` | Written; not yet heard |
+| Renderer: DS 2D composed in software, both screens on the display through vitaGL | The compositor runs the opening and the title screen; the vitaGL present has never run |
+| Renderer: DS 3D rasterised on the GPU | The game feeds it real geometry; nothing has rasterised it yet |
+| Audio: the DS mixer through `sceAudioOut` | Works: 15 channels of real audio accepted by the output port, not yet heard through a speaker |
 | Link step: overlay layout, VPK packaging | Works |
-| Boots and runs the game's opening from a real ROM | Works, in the Vita3K emulator |
+| Boots, plays the opening, reaches the title screen and starts a new game, from a real ROM | Works, in the Vita3K emulator: 14400 frames at 30 fps |
 | DS 2D renderer, against the real game | Works: text, sprites, palettes, both screens |
+| Stall watchdog, and a guarded allocator for finding heap bugs | Works (`port/vita/watchdog.c`, `make MALLOC_GUARD=1`) |
 | GPU path (presenting, and the DS's 3D) | Untested: needs `libshacccg.suprx` |
-| Playable | **No**: no input has been tried, and nothing has run on hardware |
+| Buttons and touch | Buttons drive the real game through its menus; touch reads the real panel |
+| Playable | **Not yet**: a new game starts, but nothing has been drawn on a GPU, no sound has been heard, and nothing has run on hardware |
 | SoulSilver build driver | Not written (its sources are here; only Platinum has a driver) |
 
 Only Platinum and SoulSilver, US releases, as in pspoke. Wi-Fi, DS wireless and microphone features are
@@ -119,7 +125,9 @@ contract check, in seconds.
 `ux0:data/vitapoke/log.txt` -- which is how far it got and why it stopped. With
 `--rom your-dump.nds` it uses your ROM; without one, `tests/vita/make_probe_rom.py` writes a file
 shaped like a DS ROM (a header and empty tables, no game data) that is enough to test everything
-before the game's first data read.
+before the game's first data read. `--press 120:Return,150:x` works the buttons on a schedule, which
+is as close to playing as an unattended run gets, and `--shacccg libshacccg.suprx` installs the
+shader compiler so the GPU path can run at all.
 
 `./build.sh emu-check` is the other one. It builds a test into a VPK, boots it in the
 [Vita3K](https://vita3k.org) emulator and reads back the report, which is the only way short of hardware
@@ -161,9 +169,10 @@ Saves are normal 512 KB DS saves, movable to and from a DS emulator or cartridge
 
 The port is early, and the open pieces are large and fairly independent:
 
-- **getting it to boot** — everything is written and nothing has been watched running; the log in
-  `ux0:data/vitapoke/log.txt` marks every scene the game enters,
-- **the 3D path** — written against libntr's geometry simulator and never seen to draw a triangle
+- **the GPU path** — presenting the two panels and rasterising the DS's 3D have never run, because
+  the emulator used here has no shader compiler; anyone with `libshacccg.suprx` can settle both with
+  one `./build.sh boot --rom dump.nds --shacccg libshacccg.suprx`,
+- **the 3D path** — the game feeds it real geometry, but nothing has rasterised it
   (`port/native-vita-render/g3_backend.cpp`; the depth convention is the first thing to check),
 - **performance** — the DS's 2D is composed on the CPU, and nothing has been measured on hardware;
   NEON in the 2D compositor and the sound mixer is the obvious next step,

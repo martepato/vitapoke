@@ -28,13 +28,14 @@
  *
  * Returns non-zero if the count was taken.
  */
-static int Take(SceUID sema, int block)
+static int Take(SceUID sema, int block, enum VitaWaitSite site)
 {
 	int result;
 	unsigned depth;
 
 	if (!block)
 		return sceKernelPollSema(sema, 1) >= 0;
+	VitaOS_WaitTick(site);
 	depth = VitaOS_Release();
 	result = sceKernelWaitSema(sema, 1, NULL);
 	VitaOS_Reacquire(depth);
@@ -93,9 +94,9 @@ static BOOL Send(OSMessageQueue *q, OSMessage msg, s32 flags, BOOL front)
 
 	if (!r)
 		VitaNativeFatal("send on an uninitialised DS message queue");
-	if (!Take(r->writable, flags & OS_MESSAGE_BLOCK))
+	if (!Take(r->writable, flags & OS_MESSAGE_BLOCK, VITA_WAIT_QUEUE_SEND))
 		return FALSE;
-	if (!Take(r->gate, 1))
+	if (!Take(r->gate, 1, VITA_WAIT_QUEUE_SEND))
 		VitaNativeFatal("DS message queue gate lost");
 	if (front) {
 		q->firstIndex = (q->firstIndex + q->msgCount - 1) % q->msgCount;
@@ -119,9 +120,9 @@ static BOOL Receive(OSMessageQueue *q, OSMessage *out, s32 flags, BOOL peek)
 
 	if (!r)
 		VitaNativeFatal("receive on an uninitialised DS message queue");
-	if (!Take(r->readable, flags & OS_MESSAGE_BLOCK))
+	if (!Take(r->readable, flags & OS_MESSAGE_BLOCK, VITA_WAIT_QUEUE_RECV))
 		return FALSE;
-	if (!Take(r->gate, 1))
+	if (!Take(r->gate, 1, VITA_WAIT_QUEUE_RECV))
 		VitaNativeFatal("DS message queue gate lost");
 	if (out)
 		*out = q->msgArray[q->firstIndex];
@@ -169,7 +170,7 @@ BOOL OS_TryLockMutex(OSMutex *m)
 	SceUID me = sceKernelGetThreadId();
 
 	if (r->owner != me) {
-		if (!Take(r->gate, 0))
+		if (!Take(r->gate, 0, VITA_WAIT_MUTEX))
 			return FALSE;
 		r->owner = me;
 	}
@@ -184,7 +185,7 @@ void OS_LockMutex(OSMutex *m)
 	SceUID me = sceKernelGetThreadId();
 
 	if (r->owner != me) {
-		if (!Take(r->gate, 1))
+		if (!Take(r->gate, 1, VITA_WAIT_MUTEX))
 			VitaNativeFatal("DS mutex lock failed");
 		r->owner = me;
 	}
@@ -242,7 +243,10 @@ void OS_SpinWait(u32 cycles)
 	u64 us = ((u64)cycles * 1000000u + OS_SYSTEM_CLOCK - 1) / OS_SYSTEM_CLOCK;
 
 	if (us) {
-		unsigned depth = VitaOS_Release();
+		unsigned depth;
+
+		VitaOS_WaitTick(VITA_WAIT_SPIN);
+		depth = VitaOS_Release();
 		sceKernelDelayThread((SceUInt)us);
 		VitaOS_Reacquire(depth);
 	}

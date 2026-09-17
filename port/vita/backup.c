@@ -83,6 +83,7 @@ void CARD_LockBackup(u16 id)
 
 	if (gate < 0)
 		VitaNativeFatal("CARD_LockBackup with no save file open");
+	VitaOS_WaitTick(VITA_WAIT_CARD);
 	depth = VitaOS_Release();
 	taken = sceKernelWaitSema(gate, 1, NULL);
 	VitaOS_Reacquire(depth);

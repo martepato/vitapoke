@@ -50,6 +50,45 @@ void VitaOS_TableUnlock(void);
 /* Monotonic microseconds, on one clock for the whole port. */
 unsigned long long VitaOS_Now(void);
 
+/* ------------------------------------------------------------------ the stall watchdog
+ *
+ * Every place this port can wait bumps one of these, and the watchdog in watchdog.c prints the
+ * counts when frames stop arriving. A hang is otherwise invisible: the log's last line is whatever
+ * the game was doing a moment before, the console shows the last frame composed, and there is no
+ * debugger. Which counter is still climbing says whether the port is spinning, whether it is
+ * blocked on a wait that nothing will satisfy, and which one.
+ */
+enum VitaWaitSite {
+	VITA_WAIT_VBLANK,        /* OS_WaitIrq: the game's own clock */
+	VITA_WAIT_SLEEP,         /* OS_Sleep* and the SDK's delays */
+	VITA_WAIT_YIELD,         /* OS_YieldThread */
+	VITA_WAIT_JOIN,          /* OS_JoinThread */
+	VITA_WAIT_QUEUE_SEND,    /* OS_SendMessage on a full queue */
+	VITA_WAIT_QUEUE_RECV,    /* OS_ReceiveMessage on an empty one */
+	VITA_WAIT_MUTEX,         /* OS_LockMutex, contended */
+	VITA_WAIT_SPIN,          /* OS_SpinWait: a busy wait in the original */
+	VITA_WAIT_CARD,          /* CARD_*: a read or a backup write */
+	VITA_WAIT_SITES
+};
+
+/* Called on every wait. One increment, unsynchronised on purpose: a lost count costs nothing and a
+ * lock here would be a lock on the hottest path in the port. */
+void VitaOS_WaitTick(enum VitaWaitSite site);
+
+/* Check that libc's free-list heads are still intact, and report the frame they stopped being so.
+ * Called once a frame; see the note in watchdog.c for why this is worth its 258 loads. */
+void VitaNativeHeapCheck(unsigned frame);
+
+/* Start the watchdog. Does nothing if it is already running. */
+void VitaNativeWatchdogStart(void);
+
+/* The lock's state, for the watchdog's report. */
+void VitaOS_LockState(SceUID *owner, unsigned *depth);
+
+/* The DS threads this port has created, newest last, for the watchdog's report. Returns how many
+ * were written. */
+unsigned VitaOS_ThreadIds(SceUID *out, unsigned max);
+
 /* The port's log. printf goes nowhere on a console, so everything that matters after boot goes to
  * a file next to the application. Implemented by the application, declared here so the platform
  * sources can report without depending on which game they are linked into. */

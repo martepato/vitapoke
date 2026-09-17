@@ -131,6 +131,8 @@ int main(void)
 		return 1;
 	}
 	sceKernelStartThread(game, 0, NULL);
+	/* After the game thread, so a watchdog report can never be the first thing in the log. */
+	VitaNativeWatchdogStart();
 	sceKernelWaitThreadEnd(game, NULL, NULL);
 	return 0;
 }

@@ -40,13 +40,23 @@ extern void VitaNativeMemReport(const char *tag);
 extern void VitaNativeMemPoll(void);
 
 /* One report every 600 frames: twenty seconds of play at 30 fps. Everything in it is a counter the
- * renderer or the sound backend already keeps, so a frame costs a few additions. */
+ * renderer or the sound backend already keeps, so a frame costs a few additions. Build with
+ * -DVITAPOKE_REPORT_FRAMES=60 to watch a scene change as it happens, at the cost of a log that grows
+ * ten times as fast. */
+#ifdef VITAPOKE_REPORT_FRAMES
+#define REPORT_FRAMES VITAPOKE_REPORT_FRAMES
+#else
 #define REPORT_FRAMES 600
+#endif
 
 /* How many frames get a line of their own at startup. */
 #define FIRST_FRAMES 10
 
 static unsigned frames;
+
+/* For the watchdog, which has no other way to tell a stalled port from a slow one. */
+unsigned VitaNativeFrameCount(void) { return frames; }
+
 static unsigned long long frameStart, lastComplete;
 static unsigned long long gameUs, audioUs, renderUs, idleUs;
 
@@ -135,6 +145,7 @@ void VitaNativeFrameComplete(void)
 		                 RenderStage(2), VitaNativeG3Polygons());
 	}
 
+	VitaNativeHeapCheck(frames);
 	if (frames % 10 == 0)
 		VitaNativeMemPoll();
 	if (frames % REPORT_FRAMES == 0)

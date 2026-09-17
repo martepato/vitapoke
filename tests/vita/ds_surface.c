@@ -40,6 +40,9 @@ int VitaNativeSoundSilent = 1;
 /* The renderer's, which this check does not link. */
 unsigned VitaNativeRenderFrameCount(void) { return 0; }
 
+/* The frame driver's, which this check does not link either: the watchdog reads it. */
+unsigned VitaNativeFrameCount(void) { return 0; }
+
 /* What the platform layer offers the application. These live in port/vita and are declared where
  * their users are, so they are declared here too rather than pulling the application in. */
 void VitaNativeVBlankReset(void);
@@ -274,6 +277,19 @@ int main(void)
 		}
 		VitaNativeMemReport("checks");
 		VitaNativeMemPoll();
+	}
+
+	/* The stall watchdog's counters. Its thread is not started -- a check that finishes in
+	 * milliseconds would never reach a stall -- but every wait site's tick has to compile and the
+	 * two accessors it reports with have to exist. */
+	{
+		SceUID owner = -1, ids[4];
+		unsigned depth = 0;
+
+		for (int site = 0; site < VITA_WAIT_SITES; site++)
+			VitaOS_WaitTick((enum VitaWaitSite)site);
+		VitaOS_LockState(&owner, &depth);
+		(void)VitaOS_ThreadIds(ids, 4);
 	}
 
 	/* The audio output. Opening the port is the one thing that needs hardware, so it is not called;

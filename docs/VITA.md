@@ -36,12 +36,14 @@ Everything in this section was built and linked with the pinned toolchain.
   `scripts/toolchain.sh` does for PSPDEV. It deliberately does not use `vdpm` or
   `bootstrap-vitasdk.sh`: both resolve a channel through `vitasdk.org`, which makes the compiler you get
   depend on when you ran the build, and the point of pinning is that it does not.
-- **The GPU dependencies.** `scripts/deps.sh` builds vitaGL and math-neon at pinned commits into
-  the toolchain. vitaGL is not the renderer's target (see the decision below), but it is how the port
-  currently proves the GPU offers the texture formats the DS compositor needs.
-  `port/vita/shark_stub.c` answers its runtime-shader-compiler calls with "no compiler", so vitaGL
-  links without vitaShaRK. The renderer will need `libshacccg.suprx` for its own shaders -- see the
-  decision below -- but nothing in the checks does.
+- **The GPU dependencies.** `scripts/deps.sh` builds vitaGL, vitaShaRK and math-neon at pinned
+  commits into the toolchain. vitaGL is how the port puts the composed DS screens on the display, and
+  vitaShaRK is how vitaGL compiles the shaders it writes for its own fixed-function pipeline: there is
+  no precompiled path, so the renderer needs `libshacccg.suprx` on the console at runtime. See the
+  decision below for what that costs and why it is accepted. Building vitaShaRK needs one header
+  VitaSDK does not ship, `shacccg_ext.h`; `port/vita/shacccg_ext.h` is that declaration and
+  `shacccg_ext_stub.c` defines the two functions, because there is no import stub for them either.
+  The port never calls them -- it initialises the compiler through `shark_init_simple`.
 - **The platform layer.** `port/vita` implements the DS interfaces the game and libntr call -- `OS_*`,
   `TP_*`, `RTC_*`, the pad registers -- directly on psp2. See **Where the boundary is** below for why
   that, and not the PSPSDK, is the line. `tests/vita/ds_surface.c` calls every one of them and is
@@ -318,8 +320,9 @@ for its fixed-function pipeline. **That was wrong**, and the way it was found ou
 port reached the game's first frame and hung, and vitaGL's last act in the log was opening
 `ux0:data/shader_cache/v31/v/00000028-0.gxp`. vitaGL *writes* its fixed-function shaders as Cg source
 and compiles them on the console through vitaShaRK, caching each variant in that directory. So the
-compiler is needed either way, and `port/vita/shark_stub.c` -- which answered those calls with "no
-compiler" -- was answering a question that had to be answered properly instead.
+compiler is needed either way, and the stub that had been answering those calls with "no compiler"
+was answering a question that had to be answered properly instead. It is gone; `scripts/deps.sh`
+builds the real vitaShaRK.
 
 So the renderer needs `libshacccg.suprx` present at runtime. That is a real cost and worth stating
 plainly: it is on most custom-firmware consoles but it is not on a stock one, and it is not in the
@@ -360,11 +363,18 @@ and battle. The PSP paid almost nothing for the same step because its GE drew in
 could simply read. Keeping it is what makes the DS's layer ordering, windows and blending come out
 right; compositing the 3D layer on the GPU instead means moving the whole 2D pipeline there with it.
 
-None of this has met a real game frame yet. Two things to check first when it does: the depth
+The front half of this has met the real game: the opening cutscene drives the geometry engine, the
+port turns its commands into triangles (18 to 162 polygons a frame, climbing through the scene) and
+the 2D engine asks for the layer to be composited in. What has not happened is the drawing, because
+that is the part behind the shader compiler. Two things to check first when it does: the depth
 convention (the DS's far plane is +1 and `glOrtho` with a near of -1 maps an eye z of -1 to the far
 plane, so the depth is handed over negated -- see `G3SIM_AddVtx`), and the texture cache, which has
 sixteen slots and a megabyte and no eviction, so a scene that needs more says so in the log rather
 than silently drawing the wrong thing.
+
+One thing the runs did settle: the game asks for far more texture *binds* than distinct textures --
+roughly two thousand binds per sixty frames in the cutscene -- so the cache being a cache, rather than
+a decode per bind, matters. Its hit counter is the number to watch on the first hardware run.
 
 ## Audio
 
@@ -455,45 +465,128 @@ bound and has no Vita counterpart — that check simply goes away, along with th
 below was found. With `--rom your-dump.nds` it uses a real ROM; without one,
 `tests/vita/make_probe_rom.py` writes a file shaped like a DS ROM -- a header, an overlay table, empty
 file tables, no game data -- which is enough to test everything up to the game's first data read.
+`--press 120:Return,150:x` works the buttons on a schedule, which is what turns a boot into something
+closer to a play session; `--shacccg FILE` installs the shader compiler the renderer needs.
 
-**With a real ROM, the game runs.** In Vita3K, built with `NO_GPU=1 FRAME_DUMP=20` (see the renderer
-section for why), it gets through its own startup, loads its overlays, and plays the opening: the
-copyright screen, the GAME FREAK logo, the Pokémon logo, in colour, both screens, composed by this
-port's software 2D renderer from the real ROM. About a thousand frames were run and dumped to check
-it. That is the answer to the question the whole port exists to ask.
+**With a real ROM, the game starts.** Pressing START at the title screen and A on the menu takes it
+through `gMainMenuAppTemplate`, `gGameStartRowanIntroAppTemplate` and into
+`gRowanIntroAppTemplate` -- Professor Rowan's introduction, the first scene of a new game -- and it
+sat there running at 30 frames a second for another four minutes, sixteen sound channels playing,
+with no assertion, no fatal, and a flat heap. `tests/vita/boot.sh --press 200:c,220:Return,...` is
+the whole of it.
+
+```
+[MEM] enter gTitleScreenAppTemplate      frame=6420
+[MEM] enter app@0x813be2d4               frame=6691   <- START
+[MEM] enter gMainMenuAppTemplate         frame=6697
+[MEM] enter gGameStartRowanIntroAppTemplate frame=6710 <- A on "New Game"
+[MEM] enter gRowanIntroAppTemplate       frame=6713
+[PERF] frames=14400 fps=30.01 game_us=32427 idle_us=32373 render_us=785 polygons=0
+[AUDIO] out=1 fill=1600 written=7864464 underruns=2361 dropped=0 peak=23116 active=ffff
+```
+
+**Left to itself it plays the whole attract sequence.** In Vita3K, built with `NO_GPU=1`
+(see the renderer section for why), it gets through its own startup, loads its overlays, plays the
+opening cutscene -- the copyright screen, the GAME FREAK logo, the Pokémon logo, in colour, on both
+screens, composed by this port's software 2D renderer from the real ROM -- reaches the **title
+screen**, and loops back to the cutscene the way the real game does when nobody presses anything.
+Nine thousand frames, five minutes, no assertion, no fatal, no leak: the heap sits at 17 MB and does
+not climb between loops.
 
 ```
 [APP] vitapoke starting: data in ux0:data/vitapoke
+[GPU] built with VITAPOKE_NO_GPU: the DS screens are composed and not drawn
 [RENDER] ready: software 2D, two 256x192 panels at 2x on a 960x544 display
 [APP] entering NitroMain
 [STARTUP] OS arena initialised, 6 MiB in main backing
 [AUDIO] output ready: 16000 Hz, 256-sample buffers, 8192-sample ring
-[AUDIO] init output=ready sound=on
 [OVERLAY] load id=77
 [MEM] enter gOpeningCutsceneAppTemplate frame=0 ... files_open=5/5 open_fail=0 read_fail=0
-[FRAME] 1 game_us=0 audio_us=2635 render_us=8949 bind_us=3277 compose_us=2966 present_us=105
-[FRAME] 10 game_us=272599 audio_us=10791 render_us=39831 bind_us=22 compose_us=9045 present_us=1
+[FRAME] 1 game_us=0 audio_us=2504 render_us=5261 bind_us=2526 compose_us=2321 present_us=109 polygons=0
+[G3] first 3D frame: 2 polygons, layer shown
+[MEM] enter gTitleScreenAppTemplate frame=6420 ... heap_used=13327944 heap_high=13329160
+[PERF] frames=6900 fps=29.99 game_us=29821 idle_us=28905 render_us=3387 compose_us=4465 polygons=996
+[MEM] enter gOpeningCutsceneAppTemplate frame=7972 ... heap_used=17232008
+[PERF] frames=9000 fps=29.99 game_us=29363 idle_us=27305 render_us=3851 compose_us=5141 polygons=3488
+[AUDIO] out=1 fill=1269 written=501364 underruns=23 dropped=0 peak=21912 clips=0 active=7fff
+[INPUT] first button press: pad=0x00000008 ds=0x008
 ```
 
 So: the module loads, the platform layer comes up, the DS arena, the tick clock, the interrupt table
 and the vertical blank are in place, the ROM's overlay table matches what the build expects, the file
-system serves the game's files, the heaps and task managers are built, the sound engine's output port
-opens, the overlay loader re-initialises a module's data, and the game's own scenes run.
+system serves the game's files, the heaps and task managers are built, the overlay loader
+re-initialises a module's data, and the game's own scenes run and hand over to each other. And five
+things that only a running game could show:
 
-What the numbers say, remembering that they are an emulator's: about 30 ms of game code per frame and
-under 10 ms of compositing, with the frame caches skipping most frames' 2D work entirely (`compose_us`
-is 1 µs on the frames they hit). The emulator itself runs at roughly a sixth of real time, so nothing
-here is a frame rate for the console -- only hardware can give that.
+- **It holds 30 frames a second in the emulator.** Nine thousand frames in five minutes of wall
+  clock, `fps` reading 29.99-30.01 the whole way: the game's own rate, on an emulator, on an
+  ordinary Linux host. That is not a number for the console -- Vita3K's timing and scheduling are
+  approximations and its CPU is not a Cortex-A9 -- but a port that could not keep up would not read
+  30 here either. About 30 ms a frame is the game's own code and 2-6 ms is the software compositor.
+- **The 3D path is fed.** `[G3] first 3D frame` is the first frame the geometry engine produced
+  anything on; from there the count per frame climbs through the opening and reaches 3488 in the
+  title sequence, with the 2D engine asking for the 3D layer to be composited in. Every DS geometry
+  command the game issues reaches the port's `G3SIM_*` backend and becomes a triangle list. Whether
+  those triangles come out *right* is still unknown, because nothing rasterised them.
+- **The sound engine produces sound.** Half a million samples accepted by `sceAudioOut` with
+  `peak=21912` of 32767 and fifteen channels playing: the DS mixer is synthesising real audio from
+  the ROM's sequences, not silence. The underrun count stops climbing after the first seconds.
+- **Buttons do what they should.** `pad=0x00000008` is `SCE_CTRL_START` and `ds=0x008` is the DS's
+  START bit, so the mapping in `port/vita/input.c` lands where the game reads it -- and the game acts
+  on it: the presses above walk it from the title screen into a new game.
+- **The heap is stable.** 17 MB in use at the second loop, `heap_high` equal to `heap_used`, no file
+  open or read failing, the stack 8 KB into its megabyte.
 
-**What has still never run:** the GPU. `NO_GPU=1` is how the above was checked, because Vita3K has no
-shader compiler unless the user puts `libshacccg.suprx` into it, and without a compiler vitaGL cannot
-make its fixed-function shaders (see the renderer section). So the panel present, the 3D rasteriser
-and the audio actually reaching a speaker are all still unverified. Nor has any button been pressed:
-nothing here drives the pad, so the game plays its opening and waits.
+**What has still never run:** the GPU. `NO_GPU=1` is how everything above was checked, because
+Vita3K has no shader compiler unless the user puts `libshacccg.suprx` into it, and without a compiler
+vitaGL cannot make its fixed-function shaders (see the renderer section). So the panel present and
+the 3D rasteriser are unverified, and so is sound *coming out of a speaker* rather than being
+accepted by the output port. With the module in hand,
+`./build.sh boot --rom dump.nds --shacccg libshacccg.suprx` is the run that would settle the first
+two.
 
 Two things to look at first when it does run on a console: the dark red bands at the outer edges of
 both panels in some scenes, which may be the cutscene's own backdrop or a background's horizontal
 wrap, and the 3D depth convention in `G3SIM_AddVtx`.
+
+### Finding the bug that stopped it at thirty seconds
+
+Worth writing down as a method, because the first three attempts all pointed the wrong way.
+
+The symptom: the game ran the opening and stopped dead after about 900 frames, every time, the
+emulator's own log filling with `Invalid read of uint32_t` at a PC inside `_malloc_r`. A crash inside
+the allocator means somebody wrote outside a block -- and by the time malloc trips over the damage,
+whatever did it is long gone. Three things were built to close that gap, and each ruled out a
+suspicion rather than confirming one:
+
+1. **A stall watchdog** (`port/vita/watchdog.c`), because a port that stops should say so. It reports
+   the frame, who holds the DS execution lock, every DS thread's kernel status and how many times
+   each of the port's wait sites has been entered -- a count still climbing is a spin, all of them
+   still is a wait nothing will satisfy. It found nothing, which was itself the answer: the port was
+   not stalled, the *process* had died and Vita3K had returned to its own window, which looks
+   identical from outside.
+2. **A guarded allocator** (`port/vita/heap_guard.c`, `make MALLOC_GUARD=1`), which puts a magic word
+   either side of every block and checks them on free and on a sweep of all live blocks every 256
+   operations. It reported no overflow at all. So nothing was writing past the end of a block.
+3. **A check of libc's free-list heads**, run once a frame in every build (`VitaNativeHeapCheck`).
+   `__malloc_av_`'s entries are never null in a healthy program, so a null is proof of a stray write.
+   They were intact on the last frame before the crash.
+
+What actually found it was reading the *first* fault rather than the ten thousandth. The emulator
+logs registers with each one, and at the first: `PC` in `_free_r`, and the pointer being freed was
+`0x817890fc` -- inside `s_HW_MAIN_MEM`, the DS's own main RAM. Something was handing the game's own
+allocator's memory to libc's `free`, which then read a "chunk header" made of whatever DS data sat in
+front of it and walked off into nothing.
+
+The culprit was one line in the geometry frontend. `DRAW_CMD_G3_CMD_LIST` ended with
+`free(msg->data.ptr)`, from a design where the command list was posted to a drawing thread and the
+poster had to hand over a copy. This port runs the simulator synchronously on the caller's own buffer
+-- which is the DS's contract for `MI_SendGXCommand`, and which lives in the game's arena. Deleting
+the free is the whole fix, and with it the game runs the opening, reaches the title screen, and loops.
+
+The lesson, and it generalises: **a crash in the allocator is a report, not a location.** The tools
+that say where a block was overrun cannot see a pointer that was never a block. The register dump at
+the first fault said it in one line.
 
 ### Six things that cost an afternoon each
 
@@ -522,6 +615,16 @@ Worth writing down, because none of them is discoverable by reading:
   already waits for one twice per update -- that is its clock -- so a third wait would have run it at
   20 frames a second rather than 30, with nothing about the frame looking wrong. `vglWaitVblankStart(GL_FALSE)`
   in `VitaGpuInit` is what keeps the game's own pacing the only pacing.
+- **A crash in `_malloc_r` is not a heap overflow.** It can be a pointer that was never a heap block
+  at all: the DS's allocator hands out memory inside `s_HW_MAIN_MEM`, and one call to libc's `free`
+  with one of those sends the allocator walking a chunk header made of DS data. The tools that catch
+  overruns cannot see it. See the section above for what did.
+- **The emulator will fill the disk.** Vita3K at the log level worth running writes several
+  gigabytes a minute, to its own `vita3k.log` as well as to its standard output; a five-minute boot
+  produced 29 GB across the two and the next build failed on a full disk. `tests/vita/emulator.sh`
+  now runs a guard alongside it that truncates either file past 64 MB. Truncating a file the writer
+  still holds open leaves a hole rather than rewinding it, so the emulator keeps appending where it
+  was and the space comes back.
 - **The game checks the cartridge's maker code.** `CheckForMemoryTampering` calls `OS_Terminate` if
   the header does not say Nintendo, so the port has to put the ROM's real header where the game
   looks for it (`CARD_Init` does), and the probe ROM has to carry those two bytes to get past
@@ -536,7 +639,7 @@ repeatably, in the project's own build.
 | Piece | State |
 |---|---|
 | Pinned VitaSDK toolchain | Done (`scripts/toolchain.sh`) |
-| vitaGL and math-neon, no `libshacccg.suprx` needed | Done (`scripts/deps.sh`, `port/vita/shark_stub.c`) |
+| vitaGL, vitaShaRK and math-neon, pinned and built into the toolchain | Done (`scripts/deps.sh`); the renderer needs `libshacccg.suprx` at runtime |
 | Platform layer: arena, tick, interrupts, threads, alarms, touch, clock | Done; 27 runtime checks pass in Vita3K |
 | Build machinery: one tree, placeholders for the target's flags | Done (`scripts/stage.sh`, `port/build/vita.mak`) |
 | DS SDK replacement compiled for ARM | Done: 270/271, and the one failure is a module the filter drops |
@@ -544,19 +647,21 @@ repeatably, in the project's own build.
 | DS message queues, mutexes, cache maintenance | Done (`port/vita/os_sync.c`), with the execution lock released across every blocking wait |
 | Frame driver, entry point, log, save file, owner profile | Done (`port/vita/frame.c`, `app_main.c`, `memlog.c`, `backup.c`, `owner_info.c`) |
 | Vertical blank | Done: the console's own, through `sceDisplayWaitVblankStart` (`port/vita/cadence.c`) |
-| Renderer: DS 2D composed in software, put on the display through vitaGL | Written (`port/native-vita-render/`); no real game frame has reached it |
-| Renderer: DS 3D rasterised on the GPU | Written; geometry and depth conventions unverified |
-| Audio: the DS mixer's output through `sceAudioOut` | Written (`port/vita/audio_out.c`); not yet heard |
+| Renderer: DS 2D composed in software, put on the display through vitaGL | The compositor runs the game's opening and title screen; the vitaGL present has never run (it needs `libshacccg.suprx`) |
+| Renderer: DS 3D rasterised on the GPU | The game feeds it real geometry (up to 3488 polygons a frame in the title sequence); nothing has rasterised it, so the depth convention is still unverified |
+| Audio: the DS mixer's output through `sceAudioOut` | Working: 500k samples accepted, peak 21912/32767, 15 channels -- real audio from the ROM, not yet heard through a speaker |
 | Overlay data layout and the link | Done (`overlays/gen-link.py`, `INSERT AFTER .data`) |
 | VPK packaging | Done, and wired into `./build.sh game` |
 | No ROM needed to build | Done: the overlay table is read from the ROM at startup |
 | Screen layout: both DS screens at 2x, side by side | Done (`port/vita/include/vitapoke.h`, honoured by the renderer) |
 | Touch input | Done: `TP_*` reads the front panel through `sceTouch`, no cursor and no stylus mode |
+| Buttons | Done, and verified on the running game: `SCE_CTRL_START` reaches the DS START bit (`./build.sh boot --press`) |
 | On-screen keyboard | Not needed: the game's own naming screen is used, because the Vita has a touchscreen |
 | MIPS inline assembly | Done: `mov %0, sp` and `dmb ish`, guarded on `__arm__` |
 | Runtime checks in the Vita3K emulator | Done (`./build.sh emu-check`) |
-| Does it boot? | Yes, in Vita3K, from a real ROM: through the game's own startup and into its opening |
-| Does the DS 2D renderer work? | Yes: the copyright screen, the GAME FREAK logo and the Pokémon logo, in colour, both screens |
+| Does it boot? | Yes, in Vita3K, from a real ROM: startup, the opening cutscene, the title screen, and back round the attract loop -- 9000 frames at 30 fps with no assertion or fatal |
+| Does the DS 2D renderer work? | Yes: the copyright screen, the GAME FREAK logo, the Pokémon logo and the title screen, in colour, both screens |
+| Stall watchdog and heap diagnostics | Done (`port/vita/watchdog.c` always on, `heap_guard.c` under `MALLOC_GUARD=1`) |
 | Does the GPU path work? | **Unknown.** It needs `libshacccg.suprx`, which the emulator here does not have |
-| Does it play? | **Unknown.** No button has been pressed, no sound heard, no 3D drawn |
+| Does it play? | **It starts.** START and A take it from the title screen through the main menu into a new game, and it runs on there. Nothing has been drawn on a GPU, no sound has been heard, and nothing has run on hardware |
 | SoulSilver | Not started: its sources are here, only Platinum has a build driver |

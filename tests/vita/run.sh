@@ -47,7 +47,8 @@ NITRO=(-DPM_KEEP_ASSERTS -DSDK_PORT -DSDK_X86 -DSDK_BUILD_VITA -DSDK_VERSION_MAJ
 PLATFORM=("$ROOT/port/vita/os_core.c" "$ROOT/port/vita/os_alarm.c" "$ROOT/port/vita/os_thread.c"
           "$ROOT/port/vita/os_sync.c" "$ROOT/port/vita/input.c" "$ROOT/port/vita/sdl_sync.c"
           "$ROOT/port/vita/cadence.c" "$ROOT/port/vita/owner_info.c" "$ROOT/port/vita/backup.c"
-          "$ROOT/port/vita/memlog.c" "$ROOT/port/vita/audio_out.c")
+          "$ROOT/port/vita/memlog.c" "$ROOT/port/vita/audio_out.c"
+          "$ROOT/port/vita/watchdog.c")
 
 "$ROOT/scripts/fetch.sh" libntr
 GEN="$ROOT/.work/vita-gen"

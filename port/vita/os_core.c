@@ -88,6 +88,16 @@ void VitaOS_Reacquire(unsigned depth)
 		VitaOS_Enter();
 }
 
+/* For the watchdog's report. Read without the lock on purpose: a report during a stall must not be
+ * able to block on the very thing it is reporting on. */
+void VitaOS_LockState(SceUID *owner, unsigned *depth)
+{
+	if (owner)
+		*owner = lockOwner;
+	if (depth)
+		*depth = lockDepth;
+}
+
 void VitaOS_TableLock(void)
 {
 	LocksInit();
@@ -331,6 +341,7 @@ void OS_WaitIrq(BOOL clear, OSIrqMask bits)
 	if (clear)
 		s_HW_INTR_CHECK_BUF &= ~bits;
 
+	VitaOS_WaitTick(VITA_WAIT_VBLANK);
 	depth = VitaOS_Release();
 	VitaNativeVBlankWait();
 	VitaOS_Reacquire(depth);

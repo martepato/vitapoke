@@ -69,6 +69,9 @@ static BOOL TouchToDS(const SceTouchReport *report, int *outX, int *outY)
 	return TRUE;
 }
 
+/* Set once the [INPUT] lines below have been written. */
+static unsigned firstPressReported, firstTouchReported;
+
 /* Fold one frame of pad and touch state into the DS registers the game reads. */
 void VitaNativeInputStep(unsigned buttons, const SceTouchData *touch)
 {
@@ -78,6 +81,14 @@ void VitaNativeInputStep(unsigned buttons, const SceTouchData *touch)
 	for (unsigned i = 0; i < 12; i++)
 		if (buttons & dsButtons[i])
 			keys |= 1u << i;
+
+	/* The first press and the first touch each get a line. Whether input arrives at all is the one
+	 * thing a log cannot otherwise show -- a game sitting on its title screen looks the same whether
+	 * the buttons are dead or nobody pressed one -- and after these two lines this costs a branch. */
+	if (buttons && !firstPressReported) {
+		firstPressReported = 1;
+		VitaNativeMemLog("[INPUT] first button press: pad=0x%08x ds=0x%03x", buttons, keys);
+	}
 
 	if (touch && touch->reportNum > 0) {
 		int x, y;
@@ -93,6 +104,10 @@ void VitaNativeInputStep(unsigned buttons, const SceTouchData *touch)
 		}
 		if (!point.touch)
 			point.touch = 0;
+		else if (!firstTouchReported) {
+			firstTouchReported = 1;
+			VitaNativeMemLog("[INPUT] first touch: ds=(%u,%u)", point.x, point.y);
+		}
 	} else if (point.touch) {
 		/* Finger lifted. The DS keeps reporting the last position with touch clear, which is what
 		 * the game's own release handling expects. */

@@ -16,7 +16,7 @@ TITLE = vitapoke (Pokemon Platinum)
 OBJS = app_main.o config.o frame.o overlay.o romfs.o scene_log.o shacccg_ext_stub.o
 # The DS platform layer, on psp2 (port/vita).
 OBJS += os_core.o os_thread.o os_alarm.o os_sync.o input.o sdl_sync.o cadence.o owner_info.o \
-        backup.o memlog.o audio_out.o
+        backup.o memlog.o audio_out.o watchdog.o
 # DS services that are not console specific.
 OBJS += ctrdg_absent.o search_disabled.o power.o gx_dma.o mi_dma.o mi_memory.o offline.o
 # The DS's memory and registers, and the parts of the game and SDK that other components build.
@@ -80,6 +80,20 @@ LDFLAGS += -Wl,--wrap=ApplicationManager_Exec,--wrap=CommSys_Update,--wrap=SysTa
 LDFLAGS += -Wl,--wrap=malloc,--wrap=free,--wrap=memalign,--wrap=realloc,--wrap=calloc
 endif
 
+# TEST ONLY: MALLOC_GUARD=1 routes every allocation through port/vita/heap_guard.c, which puts a
+# magic word either side of each block and checks both on free and on a periodic sweep. It is how a
+# heap corruption is traced back to the code that caused it. It costs 32 bytes and a list walk per
+# allocation, so it is never on in a build for playing, and it cannot be combined with GAME_PROF,
+# which wraps the same four functions for its own accounting.
+ifneq ($(MALLOC_GUARD),)
+ifneq ($(GAME_PROF),)
+$(error MALLOC_GUARD and GAME_PROF both wrap malloc: pick one)
+endif
+OBJS += heap_guard.o
+CFLAGS += -DVITAPOKE_HEAP_GUARD
+LDFLAGS += -Wl,--wrap=malloc,--wrap=free,--wrap=calloc,--wrap=realloc,--wrap=memalign
+endif
+
 include @BUILDMAK@
 
 # ---------------------------------------------------------------- the platform layer
@@ -111,6 +125,10 @@ backup.o: $(VITA)/backup.c
 memlog.o: $(VITA)/memlog.c
 	$(CC) $(CFLAGS) -c $< -o $@
 audio_out.o: $(VITA)/audio_out.c
+	$(CC) $(CFLAGS) -c $< -o $@
+watchdog.o: $(VITA)/watchdog.c
+	$(CC) $(CFLAGS) -c $< -o $@
+heap_guard.o: $(VITA)/heap_guard.c
 	$(CC) $(CFLAGS) -c $< -o $@
 # The one SceShaccCg import VitaSDK has no stub for; see port/vita/shacccg_ext.h.
 shacccg_ext_stub.o: $(VITA)/shacccg_ext_stub.c

@@ -636,8 +636,16 @@ void SIM_HandleG3Command(draw_msg_t *msg) {
         cmdBlockPtr = static_cast<G3SIM_CommandBlock_t *>(paramPtr);
       }
     }
-    free(msg->data.ptr);
-    // TODO
+    /* The command list is the caller's, and it is not freed here.
+     *
+     * This free is inherited from a design where the list was posted to a drawing thread, which
+     * meant the poster had to hand over a copy. Nothing in this port does that: MI_SendGXCommand
+     * runs the simulator synchronously on the caller's own buffer, which is the DS's contract for
+     * it, and that buffer is in the game's arena inside s_HW_MAIN_MEM. Handing one of those to
+     * libc's free sends the allocator walking a chunk header made of whatever DS data sits in front
+     * of it -- which is how this was found: the game ran for exactly thirty seconds and then died
+     * inside _free_r with a pointer into the DS's own memory.
+     */
     break;
   default:
     break;

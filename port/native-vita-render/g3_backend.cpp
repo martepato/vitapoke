@@ -112,6 +112,8 @@ struct TextureEntry {
 static TextureEntry cache[TEXTURE_SLOTS];
 static unsigned cacheSize, cacheBytes;
 static unsigned decodes, binds, hits;
+/* How many times VitaGpuTextureCreate has said no; only the first few reach the log. */
+static unsigned refusals;
 
 /* Returns the GPU texture for the geometry engine's current texture parameters, decoding it first if
  * this is the first time it has been seen. 0 means "draw untextured", which is also what the DS does
@@ -182,7 +184,12 @@ static unsigned CurrentTexture(void)
 		free(pixels);
 		if (!entry->texture) {
 			free(entry->snapshot);
-			VitaNativeMemLog("[TEXTURE] the GPU refused a %ux%u texture", w, h);
+			/* One refusal is worth reading and five thousand are not: a scene that the GPU will
+			 * not give textures to asks for the same ones on every frame, and the log is a file
+			 * on a memory card. The count that matters is in the [PERF] line. */
+			if (++refusals <= 8)
+				VitaNativeMemLog("[TEXTURE] the GPU refused a %ux%u texture%s", w, h,
+				                 refusals == 8 ? " (not reporting any more of these)" : "");
 			return 0;
 		}
 		memcpy(entry->snapshot, src, w * h);
@@ -207,6 +214,8 @@ static unsigned CurrentTexture(void)
 static struct VitaGpuVertex vertices[VERTEX_LIMIT];
 static unsigned count;
 static unsigned polygonsThisFrame;
+/* Set once the [G3] line below has been written. */
+static unsigned firstPolygonsReported;
 static int frameOpen;
 
 /* One transformed, lit and clipped vertex from the simulator.
@@ -298,6 +307,14 @@ extern "C" void VitaNativeG3FrameEnd(int wanted)
 		return;
 	G3SIM_FlushArray();
 	frameOpen = 0;
+	/* The one line that says the 3D path has work. Most of the opening is 2D, so the first frame with
+	 * geometry in it can be minutes into a run, and until it appears nothing in the log distinguishes
+	 * "the geometry engine is idle" from "the geometry engine is not wired up". */
+	if (polygonsThisFrame && !firstPolygonsReported) {
+		firstPolygonsReported = 1;
+		VitaNativeMemLog("[G3] first 3D frame: %u polygons, layer %s", polygonsThisFrame,
+		                 wanted ? "shown" : "not shown");
+	}
 	VitaGpuFrameEnd3D(wanted ? readback : NULL);
 	if (!wanted)
 		return;

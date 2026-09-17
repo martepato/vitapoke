@@ -66,7 +66,7 @@ log "Running the checks in Vita3K"
 # the emulator to finish would mean waiting for the timeout every time. Wait for the report instead and
 # stop the emulator as soon as it lands; the timeout is only the backstop for a title that never
 # finishes.
-emu_run 240 -l 3 -r "$TITLE_ID" > "$WORK/emulator.log" 2>&1 &
+EMU_LOG="$WORK/emulator.log" emu_run 240 -l 3 -r "$TITLE_ID" > "$WORK/emulator.log" 2>&1 &
 EMU_JOB=$!
 for _ in $(seq 1 240); do
   [ -f "$RESULT" ] && break

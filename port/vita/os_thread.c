@@ -280,6 +280,7 @@ void OS_SleepThread(OSThreadQueue *queue)
 	 * holding the lock across the sleep would stop anything else running -- including whoever is
 	 * supposed to wake us. psp2 keeps a pending wakeup, so a wake between queueing and sleeping is
 	 * not lost. */
+	VitaOS_WaitTick(VITA_WAIT_SLEEP);
 	depth = VitaOS_Release();
 	Check(sceKernelWaitEventFlag(record->wake, 1, SCE_EVENT_WAITOR | SCE_EVENT_WAITCLEAR, NULL, NULL),
 	      "sleep");
@@ -316,6 +317,7 @@ void OS_JoinThread(OSThread *thread)
 		VitaNativeFatal("OS_JoinThread: thread not started, or joining itself");
 
 	/* The thread being joined needs DS context to finish, so the joiner must not hold it. */
+	VitaOS_WaitTick(VITA_WAIT_JOIN);
 	depth = VitaOS_Release();
 	Check(sceKernelWaitThreadEnd(record->id, &status, NULL), "join");
 	VitaOS_Reacquire(depth);
@@ -331,6 +333,22 @@ void OS_JoinThread(OSThread *thread)
 		*link = thread->next;
 	memset(record, 0, sizeof *record);
 	VitaOS_TableUnlock();
+}
+
+/* For the watchdog's report. Takes the table lock, because the table can change under it -- and the
+ * watchdog runs when the port is stalled, not when it is busy, so it can afford to wait. */
+unsigned VitaOS_ThreadIds(SceUID *out, unsigned max)
+{
+	unsigned count = 0;
+
+	if (!out || !max)
+		return 0;
+	VitaOS_TableLock();
+	for (int i = 0; i < MAX_THREADS && count < max; i++)
+		if (records[i].thread)
+			out[count++] = records[i].id;
+	VitaOS_TableUnlock();
+	return count;
 }
 
 BOOL OS_IsThreadTerminated(const OSThread *thread)
@@ -358,6 +376,7 @@ void OS_Sleep(u32 ms)
 	if (schedulerDepth)
 		VitaNativeFatal("OS_Sleep: called with the scheduler disabled");
 
+	VitaOS_WaitTick(VITA_WAIT_SLEEP);
 	depth = VitaOS_Release();
 	while (ms) {
 		u32 part = ms > 1000000 ? 1000000 : ms;
@@ -375,6 +394,7 @@ void OS_YieldThread(void)
 		return;
 	/* Dropping the lock and taking it again is the yield: any DS thread waiting for it gets its
 	 * turn, which is what the DS's scheduler would have done here. */
+	VitaOS_WaitTick(VITA_WAIT_YIELD);
 	depth = VitaOS_Release();
 	sceKernelDelayThread(0);
 	VitaOS_Reacquire(depth);

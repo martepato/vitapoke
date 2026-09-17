@@ -12,7 +12,8 @@
 #   - it ignores SIGTERM, so a plain `timeout` waits for it forever.
 #
 # What a caller gets from sourcing this: $EMU (the emulator), $PREF (its virtual drive), and
-# emu_run SECONDS [ARG...].
+# emu_run SECONDS [ARG...]. Callers that redirect its output name that file in EMU_LOG, so the log
+# guard below keeps it from growing without bound.
 #
 # Needs a display or Xvfb, and an OpenGL driver: llvmpipe is fine for anything that does not draw.
 #   VITAPOKE_VITA3K=/path/to/Vita3K   use an emulator you already have
@@ -74,8 +75,37 @@ MISSING=$(LD_LIBRARY_PATH="$EMU_LIBS" ldd "$EMU" 2>/dev/null | awk '/not found/{
 Install them (on Debian/Ubuntu libOpenGL.so.0 is in libopengl0 and libEGL.so.1 is in libegl1), or set
 VITAPOKE_V3K_LIBS to a directory that has them."
 
+# Vita3K's own log, which it writes whatever we do with its standard output.
+EMU_OWN_LOG="$HOME/.cache/Vita3K/vita3k.log"
+# How much log either file may hold. The emulator logs every call it finds interesting, which at the
+# levels worth running is several gigabytes a minute -- a five-minute boot filled a 250 GB disk and
+# the build failed on the next write. Nothing reads more than the tail of these files, so the guard
+# below throws the beginning away rather than letting a run take the machine down.
+EMU_LOG_CAP=${VITAPOKE_EMU_LOG_CAP:-$((64 * 1024 * 1024))}
+
+# emu_log_guard FILE... : keep each FILE under the cap while the emulator runs, and echo the guard's
+# pid. Truncating a file its writer still holds open leaves a hole rather than moving the write
+# offset back, so the emulator keeps appending where it was and the disk gets the blocks back.
+emu_log_guard() {
+  local files=("$@")
+  # The guard's own output goes nowhere on purpose: it is started from a command substitution, which
+  # reads until every writer of the pipe has closed it, and this one never exits on its own.
+  (
+    while :; do
+      sleep 5
+      local f size
+      for f in "${files[@]}"; do
+        [ -f "$f" ] || continue
+        size=$(stat -c %s "$f" 2>/dev/null || echo 0)
+        if [ "$size" -gt "$EMU_LOG_CAP" ]; then : > "$f"; fi
+      done
+    done
+  ) >/dev/null 2>&1 & echo $!
+}
+
 # emu_run SECONDS [ARG...] : run the emulator with the given arguments for at most SECONDS, as the
-# unprivileged account when there is one.
+# unprivileged account when there is one. Set EMU_LOG to the file the caller redirects into, so the
+# guard above covers it too.
 #
 # The emulator does not quit on SIGTERM, so `timeout` alone waits for it forever; -k follows up with
 # SIGKILL. Everything else here is the emulator being a desktop application: it needs a display, and it
@@ -83,6 +113,7 @@ VITAPOKE_V3K_LIBS to a directory that has them."
 emu_run() {
   local seconds=$1; shift
   local cmd=(timeout -k 10 "$seconds" "$EMU" "$@")
+  local guard; guard=$(emu_log_guard "$EMU_OWN_LOG" ${EMU_LOG:+"$EMU_LOG"})
   if [ -z "${DISPLAY:-}" ]; then
     cmd=(xvfb-run -a -s "-screen 0 960x544x24" "${cmd[@]}")
   fi
@@ -92,27 +123,12 @@ emu_run() {
          env "HOME=$HOME" "SDL_AUDIODRIVER=dummy" "LD_LIBRARY_PATH=$EMU_LIBS" "${cmd[@]}")
   fi
   ( cd "$(dirname "$EMU")" && SDL_AUDIODRIVER=dummy LD_LIBRARY_PATH="$EMU_LIBS" "${cmd[@]}" ) || true
+  kill "$guard" 2>/dev/null || true
 }
 
 if [ -z "${DISPLAY:-}" ]; then
   command -v xvfb-run >/dev/null || die "no DISPLAY and no xvfb-run: Vita3K needs one or the other."
 fi
-
-if [ ! -f "$CONFIG" ]; then
-  log "Letting Vita3K write its default configuration"
-  emu_run 45 -l 4 > "$WORK/config-run.log" 2>&1
-fi
-[ -f "$CONFIG" ] || {
-  grep -vE 'qt\.|pipewire|PulseAudio' "$WORK/config-run.log" 2>/dev/null | tail -15 >&2
-  die "Vita3K did not write a configuration at $CONFIG"
-}
-sed -i -e 's/^show-welcome: true/show-welcome: false/' \
-       -e 's/^warn-missing-firmware: true/warn-missing-firmware: false/' \
-       -e 's/^check-for-updates-mode: 1/check-for-updates-mode: 0/' \
-       -e 's/^backend-renderer: Vulkan/backend-renderer: OpenGL/' \
-       -e 's/^discord-rich-presence: true/discord-rich-presence: false/' \
-       -e "s|^pref-path: .*|pref-path: $PREF|" "$CONFIG"
-
 
 # vita3k_prepare : make sure the emulator has a configuration it will start from without a click.
 #
