@@ -22,17 +22,17 @@ if ! done_ soulsilver-game; then
   qol_header
   step ss-core         bash -c "cd '$C' && python3 crossprobe.py && python3 archive.py"
   # GCC's strict-aliasing optimisation deletes the cut-in clamps in this file (Waterfall/field-move cut-ins never end).
-  step ss-aliasing-fix bash -c "cd '$C' && python3 -c \"import json,subprocess;subprocess.run(json.load(open('compile-command.json'))+['-fno-strict-aliasing','-c','src/overlay_02_02248728.c','-o','objects/overlay_02_02248728.o'],check=True)\" && psp-ar r libsoulsilver-c.a objects/overlay_02_02248728.o"
+  step ss-aliasing-fix bash -c "cd '$C' && python3 -c \"import json,subprocess;subprocess.run(json.load(open('compile-command.json'))+['-fno-strict-aliasing','-c','src/overlay_02_02248728.c','-o','objects/overlay_02_02248728.o'],check=True)\" && ${TOOLBIN}ar r libsoulsilver-c.a objects/overlay_02_02248728.o"
   step ss-data         bash -c "cd '$T/soulsilver-native-data' && python3 build_data.py"
   step ss-overlays     bash -c "cd '$T/soulsilver-native-overlays' && python3 build_registry.py"
   step ss-codegen      bash -c "cd '$T/soulsilver-native-codegen' && python3 library.py"
   step ss-maploader    bash -c "cd '$T/soulsilver-native-play/maploader' && python3 port.py --compile"
-  step ss-movement     bash -c "cd '$T/soulsilver-native-player-movement' && make movement.o terrain.o control.o && psp-ar rcs libss-player-movement.a movement.o terrain.o control.o"
-  step ss-menu-sprites bash -c "cd '$T/soulsilver-native-menu-sprites' && make progress.o graphics.o && psp-ar rcs libss-menu-sprites.a progress.o graphics.o"
+  step ss-movement     bash -c "cd '$T/soulsilver-native-player-movement' && make movement.o terrain.o control.o && ${TOOLBIN}ar rcs libss-player-movement.a movement.o terrain.o control.o"
+  step ss-menu-sprites bash -c "cd '$T/soulsilver-native-menu-sprites' && make progress.o graphics.o && ${TOOLBIN}ar rcs libss-menu-sprites.a progress.o graphics.o"
   step ss-window       bash -c "cd '$T/soulsilver-native-window' && python3 port.py"
-  step ss-sound        bash -c "cd '$T/soulsilver-native-sound-helpers' && make helpers.o && psp-ar rcs libss-sound-helpers.a helpers.o"
+  step ss-sound        bash -c "cd '$T/soulsilver-native-sound-helpers' && make helpers.o && ${TOOLBIN}ar rcs libss-sound-helpers.a helpers.o"
   step ss-fade         make -C "$T/soulsilver-native-assets/fade-port/wipe-candidate" libss-native-fade.a
-  step ss-wfc          bash -c "cd '$T/soulsilver-native-islands' && make wfc_startup.o && psp-ar rcs libss-wfc-startup.a wfc_startup.o"
+  step ss-wfc          bash -c "cd '$T/soulsilver-native-islands' && make wfc_startup.o && ${TOOLBIN}ar rcs libss-wfc-startup.a wfc_startup.o"
   step ss-particles    bash -c "cd '$T/soulsilver-native-particles' && python3 build.py"
   step ss-billboards   bash -c "cd '$T/soulsilver-native-billboards' && python3 build.py && make bootstrap.o"
   # Service objects shared with Platinum (same sources and flags), plus SoulSilver's own sound backend.
@@ -44,7 +44,7 @@ if ! done_ soulsilver-game; then
   cp -f "$T/native-sound-audio/audio_backend.o" "$T/native-sound-audio/audio_engine.o" "$T/native-sound-audio/sas_out.o" "$P/"
   cp -f "$T/soulsilver-native-billboards/bootstrap.o" "$P/billboard_bootstrap.o"
   cp -f "$T/native-audio-app/libsdk-filtered.a.base" "$P/libsdk-filtered-ss.a"
-  step ss-sdk          psp-objcopy --weaken-symbol=MTX_Copy33To43_ --weaken-symbol=MTX_Copy33To44_ --weaken-symbol=MTX_Copy43To44_ --weaken-symbol=MTX_Scale33_ --weaken-symbol=MTX_Scale43_ --weaken-symbol=MTX_Scale44_ --weaken-symbol=MTX_Transpose33_ --weaken-symbol=MTX_Transpose43_ --weaken-symbol=MTX_Transpose44_ "$P/libsdk-filtered-ss.a"
+  step ss-sdk          ${TOOLBIN}objcopy --weaken-symbol=MTX_Copy33To43_ --weaken-symbol=MTX_Copy33To44_ --weaken-symbol=MTX_Copy43To44_ --weaken-symbol=MTX_Scale33_ --weaken-symbol=MTX_Scale43_ --weaken-symbol=MTX_Scale44_ --weaken-symbol=MTX_Transpose33_ --weaken-symbol=MTX_Transpose43_ --weaken-symbol=MTX_Transpose44_ "$P/libsdk-filtered-ss.a"
   step ss-overlay-obj  bash -c "cd '$P' && make overlay.o"
   step ss-cull-vectors bash -c "cd '$P' && python3 generate_culling_vectors.py"
   mark soulsilver-game

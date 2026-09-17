@@ -31,6 +31,5 @@ LDFLAGS = -Wl,--gc-sections
 BUILD_PRX = 1
 EXTRA_TARGETS = EBOOT.PBP
 PSP_EBOOT_TITLE = SoulSilver packed G3 dispatch proof
-PSPSDK = $(shell psp-config --pspsdk-path)
-include $(PSPSDK)/lib/build.mak
+include @BUILDMAK@
 ''')

@@ -1,7 +1,7 @@
 from pathlib import Path
 import subprocess,os
 base=Path(__file__).resolve().parent
-ar='@PSPDEV@/bin/psp-ar'
+ar='@TOOLBIN@ar'
 archive=base/'libnative-filtered.a';archive.write_bytes((base.parent/'native-sdk-probe/libnative-sdk-probe.a').read_bytes())
 names=subprocess.check_output([ar,'t',str(archive)],text=True).splitlines()
 remove=[n for n in names if '__os__' in n or n=='libntr__libraries__card__src__card_common.c.o']

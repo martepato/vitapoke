@@ -1,14 +1,13 @@
 TARGET = native-romfs
 OBJS = main.o romfs.o boot.o stubs.o narc.o
 INCDIR = ../native-probe/libntrsystem/include ../native-probe/generated ../native-probe/pokeplatinum/include ../native-graphics/libntr/include
-CFLAGS = -O2 -G0 -std=gnu99 -DSDL_MAIN_HANDLED -DSDK_PORT -DSDK_X86 -DSDK_TS -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM -include ../native-probe/pokeplatinum/include/pch/global_pch.h -ffunction-sections -fdata-sections
+CFLAGS = -O2 @TARGETCC@ -std=gnu99 -DSDL_MAIN_HANDLED -DSDK_PORT -DSDK_X86 -DSDK_TS -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM -include ../native-probe/pokeplatinum/include/pch/global_pch.h -ffunction-sections -fdata-sections
 LDFLAGS = -Wl,--gc-sections
 BUILD_PRX = 1
 PSP_LARGE_MEMORY = 1
 EXTRA_TARGETS = EBOOT.PBP
 PSP_EBOOT_TITLE = Native ROM FS probe
-PSPSDK = $(shell psp-config --pspsdk-path)
-include $(PSPSDK)/lib/build.mak
+include @BUILDMAK@
 boot.o: ../native-probe/pokeplatinum/src/boot.c
 	$(CC) $(CFLAGS) -c $< -o $@
 

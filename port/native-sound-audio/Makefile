@@ -1,7 +1,7 @@
 TARGET = native-sound
 OBJS = audio_bank.o audio_loader.o audio_backend.o audio_seq.o audio_exchannel.o audio_channel.o audio_engine.o mic_pm.o os_sync.o backup.o savedata.o mi_memory.o mi_dma.o input.o rtc.o os_vram.o backing.o main.o romfs.o boot.o platform.o system.o heap.o math_util.o sys_task_manager.o graphics_registers.o gx.o gx_vramcnt.o gxstate.o
 INCDIR = ../native-audio-probe/include ../native-graphics/libntr/libraries/sim/include ../native-graphics/libntr/libraries/mi/src ../native-backup-probe/include include ../native-probe/backing/include ../native-graphics/libntr/libraries/gx/include ../native-graphics/alias-proof/include ../native-probe/libntrdwc/include ../native-probe/libntrsystem/include ../native-probe/generated ../native-probe/pokeplatinum/include ../native-graphics/libntr/include
-CFLAGS = -D_NITRO -DPM_KEEP_ASSERTS -DPOKEPLATINUM_GENERATED_ENUM -O2 -G0 -std=gnu99 -DSDL_MAIN_HANDLED -DSDK_PORT -DSDK_X86 -DSDK_TS -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM -include ../native-probe/pokeplatinum/include/pch/global_pch.h -ffunction-sections -fdata-sections
+CFLAGS = -D_NITRO -DPM_KEEP_ASSERTS -DPOKEPLATINUM_GENERATED_ENUM -O2 @TARGETCC@ -std=gnu99 -DSDL_MAIN_HANDLED -DSDK_PORT -DSDK_X86 -DSDK_TS -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM -include ../native-probe/pokeplatinum/include/pch/global_pch.h -ffunction-sections -fdata-sections
 # Sound plays through the PSP sceSasCore voice mixer (sas_out.c); the CPU mixer is not used.
 CFLAGS += -DPSP_NATIVE_SAS
 CFLAGS += $(EXTRA_CFLAGS)
@@ -11,8 +11,7 @@ BUILD_PRX = 1
 PSP_LARGE_MEMORY = 1
 EXTRA_TARGETS = EBOOT.PBP
 PSP_EBOOT_TITLE = Native Platinum startup
-PSPSDK = $(shell psp-config --pspsdk-path)
-include $(PSPSDK)/lib/build.mak
+include @BUILDMAK@
 boot.o: ../native-probe/pokeplatinum/src/boot.c
 	$(CC) $(CFLAGS) -c $< -o $@
 

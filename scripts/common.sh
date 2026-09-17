@@ -15,6 +15,17 @@ if [ -z "${VITAPOKE_OWN_TOOLCHAIN:-}" ]; then
 fi
 : "${VITASDK:=$CACHE/vitasdk}"
 export VITASDK VITAPOKE_OWN_TOOLCHAIN
+
+# PSPOKE_TARGET selects the console: vita (the port being written) or psp (the original build).
+# TOOLBIN is the toolchain's tool prefix with its path, so a build step runs "${TOOLBIN}ar" rather than
+# naming one console's tools. stage.sh substitutes the same value into the staged tree as @TOOLBIN@.
+PSPOKE_TARGET="${PSPOKE_TARGET:-vita}"
+case "$PSPOKE_TARGET" in
+  vita) TOOLBIN="$VITASDK/bin/arm-vita-eabi-";;
+  psp)  TOOLBIN="$PSPDEV/bin/psp-";;
+  *)    printf 'error: PSPOKE_TARGET must be vita or psp (got %s)\n' "$PSPOKE_TARGET" >&2; exit 1;;
+esac
+export PSPOKE_TARGET TOOLBIN
 log(){ printf '\033[1m==> %s\033[0m\n' "$*"; }
 die(){ printf 'error: %s\n' "$*" >&2; exit 1; }
 # step NAME CMD... : run CMD in a subshell, keep its output in $LOGS/NAME.log, stop on failure.

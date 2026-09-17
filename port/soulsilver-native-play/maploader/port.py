@@ -390,7 +390,7 @@ print('closure', len(closure), 'functions,', sum(m['instructions'] for m in mani
 
 if '--compile' in sys.argv:
     obj = HERE / 'overworld_native.o'
-    r = subprocess.run([str(PSPDEV / 'bin/psp-gcc'), '-O2', '-G0', '-std=gnu99',
+    r = subprocess.run([str(PSPDEV / 'bin/psp-gcc'), '-O2', *'@TARGETCC@'.split(), '-std=gnu99',
                         '-ffunction-sections', '-fdata-sections', '-Wall',
                         '-Wno-unused-but-set-variable', '-Wno-unused-variable', '-Wno-unused-function',
                         '-c', str(HERE / 'overworld_native.c'), '-o', str(obj)],

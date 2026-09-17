@@ -18,4 +18,4 @@ cmd=json.loads((c/'compile-command.json').read_text());cmd.insert(1,'-I'+str(b/'
 with (b/'compile.log').open('w') as f:subprocess.run(cmd+['-c',str(b/'billboard.c'),'-o',str(b/'billboard.o')],stdout=f,stderr=f,check=True)
 
 with (b/'gfx-compile.log').open('w') as f:subprocess.run(cmd+['-c',str(b/'gfx_sequence.c'),'-o',str(b/'gfx_sequence.o')],stdout=f,stderr=f,check=True)
-subprocess.run(['@PSPDEV@/bin/psp-ar','rcs',str(b/'libss-billboards-candidate.a'),str(b/'billboard.o'),str(b/'gfx_sequence.o')],check=True)
+subprocess.run(['@TOOLBIN@ar','rcs',str(b/'libss-billboards-candidate.a'),str(b/'billboard.o'),str(b/'gfx_sequence.o')],check=True)

@@ -3,7 +3,7 @@ OBJS = g2_asm_abi.o mi_hwaddr.o naming_osk_ss.o osk.o fx_mtx_native.o ss_memlog.
 INCDIR = include @WORK@/soulsilver-native-core/include @WORK@/soulsilver-native-core/game-include @WORK@/native-probe/generated @WORK@/native-probe/libntrsystem/include @WORK@/native-graphics/libntr/include
 PSP_NATIVE_PROBE_FRAMES ?= 3600
 PSP_NATIVE_PLAY ?= 0
-CFLAGS = -DPSP_NATIVE_PROBE_FRAMES=$(PSP_NATIVE_PROBE_FRAMES) -DPSP_NATIVE_MEMLOG=1 -DPSP_NATIVE_PLAY=$(PSP_NATIVE_PLAY) -DSDL_MAIN_HANDLED -O2 -G0 -std=gnu99 -DSDK_PORT -DSDK_X86 -DSDK_BUILD_PSP -DSDK_TS -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM -ffunction-sections -fdata-sections
+CFLAGS = -DPSP_NATIVE_PROBE_FRAMES=$(PSP_NATIVE_PROBE_FRAMES) -DPSP_NATIVE_MEMLOG=1 -DPSP_NATIVE_PLAY=$(PSP_NATIVE_PLAY) -DSDL_MAIN_HANDLED -O2 @TARGETCC@ -std=gnu99 -DSDK_PORT -DSDK_X86 -D@SDKBUILD@ -DSDK_TS -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM -ffunction-sections -fdata-sections
 # DEV=1: on-screen fps counter plus timing lines in native-memlog.txt (for development).
 DEV ?= 0
 ifeq ($(DEV),1)
@@ -73,11 +73,10 @@ BUILD_PRX = 1
 PSP_LARGE_MEMORY = 1
 EXTRA_TARGETS = EBOOT.PBP
 PSP_EBOOT_TITLE = SoulSilver (pspoke)
-PSPSDK = $(shell psp-config --pspsdk-path)
 # Own game ID in PARAM.SFO (PSPSDK defaults to UCJS10041, shared with lots of homebrew; custom firmware
 # applies per-game settings by this ID).
 SFOFLAGS += -s DISC_ID=NATS00001
-include $(PSPSDK)/lib/build.mak
+include @BUILDMAK@
 
 LDFLAGS := $(subst $(PSPSDK)/lib/linkfile.prx,linkfile.prx,$(LDFLAGS))
 .PHONY: PARAM.SFO

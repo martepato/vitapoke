@@ -42,7 +42,7 @@ void ClearFrameAndWindow2(Window *w,BOOL skip) {
 (b/'window.c').write_text(s)
 cmd=json.loads((core/'compile-command.json').read_text())
 with (b/'compile.log').open('w') as f:subprocess.run(cmd+['-Werror=implicit-function-declaration','-c',str(b/'window.c'),'-o',str(b/'window.o')],stdout=f,stderr=f,check=True)
-subprocess.run(['@PSPDEV@/bin/psp-ar','rcs',str(b/'libss-window.a'),str(b/'window.o')],check=True)
+subprocess.run(['@TOOLBIN@ar','rcs',str(b/'libss-window.a'),str(b/'window.o')],check=True)
 for f in ['linkfile.prx','run_probe.py']:
  (b.parent/'soulsilver-native-sound-helpers'/f).exists() and shutil.copyfile(b.parent/'soulsilver-native-sound-helpers'/f,b/f)  # proof-only files, absent in pspoke
 (b/'Makefile').write_text((b.parent/'soulsilver-native-sound-helpers/Makefile').read_text().replace('ss-sound-helpers','ss-window-proof').replace('main.o helpers.o table.o','main.o window.o').replace('SoulSilver sound helper proof','SoulSilver window frame proof'))

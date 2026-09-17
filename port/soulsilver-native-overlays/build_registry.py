@@ -25,8 +25,8 @@ archives=[(C/'libsoulsilver-c.a','game',memberOwner),(B.parent/'soulsilver-nativ
 results=[]
 for source,tag,mapping in archives:
  out=B/tag;out.mkdir(exist_ok=True)
- subprocess.run(['@PSPDEV@/bin/psp-ar','x',str(source)],cwd=out,check=True)
- names=subprocess.check_output(['@PSPDEV@/bin/psp-ar','t',str(source)],text=True).splitlines()
+ subprocess.run(['@TOOLBIN@ar','x',str(source)],cwd=out,check=True)
+ names=subprocess.check_output(['@TOOLBIN@ar','t',str(source)],text=True).splitlines()
  def convert(name):
   p=out/name;owner=mapping.get(name);missing=name not in mapping;reason='linker-object'
   if missing:
@@ -38,18 +38,18 @@ for source,tag,mapping in archives:
     if m:owner=int(m[1]);missing=False;reason='explicit-overlay-number'
     elif re.match(r'unk_(?:data_)?020[0-9a-fA-F]+\.o$',name):owner=None;missing=False;reason='resident-ARM9-address'
   if missing:raise RuntimeError('Unclassified object '+tag+'/'+name)
-  sec=subprocess.check_output(['@PSPDEV@/bin/psp-objdump','-h',str(p)],text=True)
+  sec=subprocess.check_output(['@TOOLBIN@objdump','-h',str(p)],text=True)
   sections=re.findall(r'^\s*\d+\s+(\S+)\s+[0-9a-f]+',sec,re.M);args=[];changes=[]
   if owner is not None:
    for s in sections:
     kind='bss' if s.startswith(('.bss','.sbss')) else 'data' if s.startswith(('.data','.sdata')) else None
     if kind:
      new=f'.ssov.{owner}.{kind}'+s;args+=['--rename-section',s+'='+new];changes.append([s,new])
-   if args:subprocess.run(['@PSPDEV@/bin/psp-objcopy',*args,str(p)],check=True)
+   if args:subprocess.run(['@TOOLBIN@objcopy',*args,str(p)],check=True)
   return {'archive':tag,'member':name,'overlay':owner,'unmapped':missing,'classification':reason,'sections':changes}
  with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:results.extend(pool.map(convert,names))
  target=B/('libss-'+tag+'-overlays.a');target.unlink(missing_ok=True)
- subprocess.run(['@PSPDEV@/bin/psp-ar','rcs',str(target),*[str(out/name) for name in names]],check=True)
+ subprocess.run(['@TOOLBIN@ar','rcs',str(target),*[str(out/name) for name in names]],check=True)
 (B/'membership.json').write_text(json.dumps(results,indent=2)+'\n')
 # Embed ranges into existing PSP linker script, before ordinary data and BSS.
 base=B/'base-linkfile.prx'

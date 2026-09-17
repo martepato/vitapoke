@@ -1,6 +1,6 @@
 from pathlib import Path
 import subprocess,re,json,collections,concurrent.futures
-b=Path(__file__).resolve().parent;root=b.parent/'soulsilver-research/pokeheartgold-slop';objdump='@PSPDEV@/bin/psp-objdump'
+b=Path(__file__).resolve().parent;root=b.parent/'soulsilver-research/pokeheartgold-slop';objdump='@TOOLBIN@objdump'
 def read(p):
  t=subprocess.check_output([objdump,'-t','-r',str(p)],text=True);defs={};refs=collections.defaultdict(set);sec=None
  for l in t.splitlines():
@@ -17,7 +17,7 @@ byobj={n:(d,r) for n,d,r in objs};globaldefs=collections.defaultdict(list)
 for n,d,r in objs:
  for sym,(sec,g) in d.items():
   if g:globaldefs[sym].append((n,sec))
-sdk=set();nm='@PSPDEV@/bin/psp-nm'
+sdk=set();nm='@TOOLBIN@nm'
 for lib in ['native-next-app/libsdk-filtered.a','native-probe/libnetwork-probe.a']:
  for l in subprocess.check_output([nm,'-g','--defined-only',str(b.parent/lib)],text=True).splitlines():
   m=re.match(r'^[0-9a-f]+\s+[A-Z]\s+(\S+)',l)

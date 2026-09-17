@@ -1,7 +1,7 @@
 from pathlib import Path
 import json,subprocess
 p=Path(__file__).resolve().parent
-out=subprocess.check_output(['@PSPDEV@/bin/psp-nm','-n',str(p/'native_soft2d_probe.elf')],text=True)
+out=subprocess.check_output(['@TOOLBIN@nm','-n',str(p/'native_soft2d_probe.elf')],text=True)
 symbols={l.split()[2]:int(l.split()[0],16) for l in out.splitlines() if len(l.split())==3 and l.split()[1] in 'BD'}
 base=symbols['PSPNative_GfxRegisters']
 rows=json.loads((p/'registers.json').read_text())

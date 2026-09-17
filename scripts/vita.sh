@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# vita.sh : build Pokémon Platinum's code for the PS Vita, as far as the port currently reaches.
+#
+# This drives the same phases as scripts/platinum.sh but for the Vita, and stops where the port stops.
+# What works today, and what each step is proving:
+#
+#   base       fetch the pinned decompilation and SDK replacement, stage the tree for ARM
+#   generated  the decompilation's generated headers (no ROM needed)
+#   sdk        libntr and libntrsystem compiled for ARM, archived, and filtered so the modules this
+#              port replaces (OS threads, alarms, the file system, the card) are dropped
+#   game       the game's own 1023 C files compiled for ARM -- the question this build exists to answer
+#
+# Not done yet: linking. That needs the renderer, the audio backend and the overlay layout, and the
+# overlay tables need your ROM. See docs/VITA.md.
+#
+#   scripts/vita.sh              build as far as the port reaches
+#   scripts/vita.sh --rom FILE   also fill in the ROM path the overlay tables need
+#   PSPOKE_VITA_FROM=game        skip to a later phase (base|generated|sdk|game)
+source "$(dirname "$0")/common.sh"
+# Several steps pipe a long build log through tail; without this the pipeline would report the
+# exit status of tail and a failed compile would be recorded as ok.
+set -o pipefail
+
+[ "$PSPOKE_TARGET" = vita ] || die "vita.sh builds for the Vita; PSPOKE_TARGET is set to '$PSPOKE_TARGET'"
+[ -x "${TOOLBIN}gcc" ] || die "VitaSDK not installed. Run: ./build-vita.sh setup"
+
+ROM=""
+while [ $# -gt 0 ]; do case "$1" in
+  --rom) ROM="$2"; shift 2;;
+  *) die "unknown option $1";;
+esac; done
+
+WORK="$ROOT/.work/vita"; T="$WORK/test_out"; LOGS="$WORK/logs"; U="$CACHE/upstream"
+mkdir -p "$LOGS"
+done_(){ [ -f "$WORK/.stamp-$1" ]; }; mark(){ touch "$WORK/.stamp-$1"; }
+
+if ! done_ base; then
+  log "Fetching pinned upstream sources"
+  "$ROOT/scripts/fetch.sh" libntr libntrsystem libntrdwc libntrwifi libvct metang pokeplatinum
+  log "Staging the build tree for ARM in .work/vita"
+  rm -rf "$T"; "$ROOT/scripts/stage.sh" "$WORK"
+  for spec in "libntr native-graphics/libntr" "libntrsystem native-probe/libntrsystem" \
+              "libntrdwc native-probe/libntrdwc" "libntrwifi native-probe/libntrwifi" \
+              "libvct native-probe/libvct" "metang native-probe/metang"; do
+    set -- $spec; rsync -a --exclude .git "$U/$1/" "$T/$2/"
+  done
+  rsync -a "$U/pokeplatinum/" "$T/native-probe/pokeplatinum/"   # keeps .git: gen-game-tables.py uses git ls-tree
+  (cd "$T/native-probe/pokeplatinum" && patch -p1 -s < "$ROOT/patches/pokeplatinum/local-edits.patch")
+  mark base
+fi
+
+# The ROM is only read, and only for the overlay tables; everything up to the game compile works
+# without one.
+if [ -n "$ROM" ]; then
+  [ -f "$ROM" ] || die "ROM not found: $ROM"
+  ROM="$(cd "$(dirname "$ROM")" && pwd)/$(basename "$ROM")"
+  { grep -rlI '@PLATINUM_ROM@' "$T" 2>/dev/null || true; } | while read -r f; do
+    sed -i.bak "s#@PLATINUM_ROM@#$ROM#g" "$f" && rm -f "$f.bak"
+  done
+fi
+
+if ! done_ generated; then
+  log "Generating headers from the decompilation"
+  N="$T/native-probe"; P="$N/pokeplatinum"; G="$N/generated"
+  rm -rf "$G"; mkdir -p "$G"
+  step genheaders   bash -c "cd '$N' && python3 genheaders.py"
+  step source-meta  bash -c "cd '$N' && python3 gen-source-metadata.py"
+  step game-tables  bash -c "cd '$N' && python3 gen-game-tables.py"
+  mkdir -p "$G/nitro/fx" "$G/res/fonts" "$G/res/graphics/battle/healthbox" "$G/res/words"
+  step fx-const     python3 "$T/native-graphics/libntr/gen/nitro/fx/gen_fx_const.py" \
+                            "$T/native-graphics/libntr/gen/nitro/fx/fx_const.csv" "$G/nitro/fx/fx_const.h"
+  step embed-cursor python3 "$ROOT/scripts/png_embed.py" "$P/res/fonts/arrow_cursor.png" \
+                            "$G/res/fonts/arrow_cursor.4bpp" sArrowCursorBitmap
+  step embed-health python3 "$ROOT/scripts/png_embed.py" \
+                            "$P/res/graphics/battle/healthbox/healthbox_parts.png" \
+                            "$G/res/graphics/battle/healthbox/healthbox_parts.4bpp" sHealthBoxPartsBitmap
+  printf '#define word_bank_o 0\n' > "$G/res/words/word_bank.naix"
+  mark generated
+fi
+
+if ! done_ sdk; then
+  log "Compiling the DS SDK replacement for ARM"
+  # compile.py reports per-file failures rather than stopping, because the modules this port replaces
+  # are dropped by filter-sdk.py straight afterwards and do not have to build. sdk-filter is what
+  # makes that safe: a module that failed here and is *not* dropped shows up as a link error later.
+  step sdk-compile   bash -c "cd '$T/native-sdk-probe' && python3 compile.py | tail -40"
+  step sdk-archive   python3 "$ROOT/scripts/sdk_archive.py" "$T/native-sdk-probe"
+  step sdk-filter    bash -c "cd '$T/native-audio-app' && python3 filter-sdk.py && cp -f libsdk-filtered.a libsdk-filtered.a.base"
+  mark sdk
+fi
+
+log "Compiling the game's own code for ARM"
+O="$T/native-audio-app/overlays"
+# --headers-only: the overlay id headers come from the decompilation's link script, and only the
+# per-overlay ROM bounds need the ROM itself.
+step ov-generate  bash -c "cd '$O' && python3 generate.py $([ -n "$ROM" ] || echo --headers-only)"
+qol="/* generated by scripts/vita.sh: quality-of-life switches (1 = on). */
+#ifndef PSPOKE_QOL_H
+#define PSPOKE_QOL_H
+#define PSPOKE_QOL_INSTANT_TEXT ${PSPOKE_QOL_INSTANT_TEXT:-1}
+#define PSPOKE_QOL_TRADE_EVOS ${PSPOKE_QOL_TRADE_EVOS:-1}
+#define PSPOKE_QOL_REPEL_PROMPT ${PSPOKE_QOL_REPEL_PROMPT:-1}
+#define PSPOKE_QOL_FORGET_HMS ${PSPOKE_QOL_FORGET_HMS:-1}
+#define PSPOKE_QOL_MOVE_BUFFS ${PSPOKE_QOL_MOVE_BUFFS:-1}
+#endif
+"
+mkdir -p "$O/include"; printf '%s' "$qol" > "$O/include/pspoke_qol.h"
+step ov-build     bash -c "cd '$O' && python3 build.py 2>&1 | tail -40"
+
+log "Reached the end of what the port builds today (see docs/VITA.md)"

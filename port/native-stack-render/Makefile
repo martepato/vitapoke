@@ -1,7 +1,7 @@
 # GE 2D compositor library for the native app. Reuses the native-render-opt objects for
 # everything except the frame/present code.
 INCDIR = $(PSPDEV)/psp/include $(PSPDEV)/psp/sdk/include ../native-probe/backing/include ../native-graphics/alias-proof/include ../native-probe/generated ../native-graphics/libntr/include ../../melon ../native-render-opt
-CFLAGS = -O2 -G0 -DSDL_MAIN_HANDLED -DSDK_PORT -DSDK_X86 -DSDK_TS -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM -DMELONDS_PSP -DPSP_NATIVE_RGBA_OUTPUT=1 -ffunction-sections -fdata-sections -fno-strict-aliasing $(addprefix -I,$(INCDIR))
+CFLAGS = -O2 @TARGETCC@ -DSDL_MAIN_HANDLED -DSDK_PORT -DSDK_X86 -DSDK_TS -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM -DMELONDS_PSP -DPSP_NATIVE_RGBA_OUTPUT=1 -ffunction-sections -fdata-sections -fno-strict-aliasing $(addprefix -I,$(INCDIR))
 # Release optimisations (Platinum test builds 2-5, verified exact): content cache, prescan/fast decode,
 # fixed-point fast paths, pipelined 2D/GE present, sampled [G3HW] card-log profile (DEV=1 only). Override OPT_REL to build without.
 OPT_REL ?= -DOPT_PRESCAN -DOPT_FASTDECODE -DOPT_MATH_CLIP -DOPT_MATH_BOX -DOPT_MATH_SCALE -DOPT_MATH_SCALE_NOP -DOPT_MATH_MUL43 -DOPT_MATH_LAZYFIN -DOPT_GE_ASYNC

@@ -4,8 +4,10 @@
 
 | Path | What it is |
 |---|---|
-| `build.sh` | Entry point: ROM check, then `scripts/<game>.sh`. |
-| `build-vita.sh` | Entry point for the PS Vita port (`setup`, `check`, `emu-check`, `clean`); see [docs/VITA.md](VITA.md). |
+| `build.sh` | PSP entry point: ROM check, then `scripts/<game>.sh`. No longer maintained. |
+| `build-vita.sh` | Entry point for the PS Vita port, which is the maintained target (`setup`, `check`, `game`, `emu-check`, `clean`); see [docs/VITA.md](VITA.md). |
+| `scripts/vita.sh` | The Vita build: stage for ARM, generate headers, compile the SDK and the game's own code. |
+| `port/build/` | The per-console make fragment each component Makefile includes (`vita.mak`, `psp.mak`). |
 | `scripts/` | Build steps (`fetch.sh`, `stage.sh`, `platinum.sh`, ...), `prereqs.sh` (checks git/python3/make/patch/rsync/curl/tar and offers to install what is missing; `PSPPOKE_ASSUME_YES=1` skips the prompt), `install.sh`, `make_save.py`, `check_native_pbp.py` (PSP loader limits). |
 | `port/` | pspoke's own code, laid out as the build tree expects (`port/<component>/...`). |
 | `port/vita/` | The Vita platform layer: the DS interfaces (`OS_*`, `TP_*`, `RTC_*`) implemented on psp2. `os_core.c` (arena, tick, interrupts), `os_thread.c`, `os_alarm.c`, `input.c` (pad and the real touchscreen), `sdl_sync.c` + `sdl2-shim/` (the few SDL types libntr's headers want), `shark_stub.c` (keeps vitaGL from needing a runtime shader compiler). |
@@ -50,6 +52,15 @@ SoulSilver components in `port/` (it reuses the SDK, services and renderer core 
 - `native-sound-audio/`: SoulSilver's sound backend (same sceSasCore output, `sas_out.c`).
 
 Folder names are historical (each started as an isolated proof); build scripts rely on this relative layout.
+
+## Targets
+
+One source tree builds for either console. `PSPOKE_TARGET` (`vita`, the default, or `psp`) selects
+which, and `scripts/stage.sh` fills the difference into the staged tree as placeholders: `@TOOLBIN@`
+(the toolchain's tool prefix), `@TARGETCC@` (flags that only make sense for one CPU), `@SDKBUILD@`,
+`@BUILDMAK@` (the make fragment in `port/build/`), `@SDKINC@` and `@PRXLINKFILE@`. `scripts/common.sh`
+derives `TOOLBIN` for build steps that run outside the staged tree. Nothing in `port/` names one
+console's compiler.
 
 ## Dev vs normal builds
 

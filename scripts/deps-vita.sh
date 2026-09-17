@@ -17,7 +17,15 @@ LOGS="$ROOT/.work/tree/logs"; mkdir -p "$LOGS"   # `step` writes each command's 
 STAMP="$VITASDK/.vitapoke-deps"
 WANT="$(awk '$1=="vitaGL"||$1=="math-neon"||$1=="vitaShaRK"{printf "%s=%s ", $1, $3}' "$ROOT/third_party.lock")"
 
-[ "$(cat "$STAMP" 2>/dev/null)" = "$WANT" ] && { echo "    Vita GPU dependencies already built"; exit 0; }
+# libntr's OS headers include <SDL2/SDL.h> and <SDL2/SDL_thread.h> on any target that is not
+# SDK_BUILD_ARM, so the whole Vita build needs them on the include path -- not just port/vita. The PSP
+# build gets them from PSPDEV's SDL2; VitaSDK ships none, so the declarations libntr actually refers to
+# are installed from port/vita/sdl2-shim. Done before the stamp check because it is nearly free and a
+# change to the shim has to land even when the GPU libraries are already built.
+install -d "$VITASDK/arm-vita-eabi/include/SDL2"
+install -m644 "$ROOT"/port/vita/sdl2-shim/SDL2/*.h "$VITASDK/arm-vita-eabi/include/SDL2/"
+
+[ "$(cat "$STAMP" 2>/dev/null)" = "$WANT" ] && { echo "    Vita SDL2 declarations installed; GPU dependencies already built"; exit 0; }
 
 if [ "$VITAPOKE_OWN_TOOLCHAIN" = 1 ]; then
   echo "This installs vitaGL and math-neon into your own VitaSDK at $VITASDK."

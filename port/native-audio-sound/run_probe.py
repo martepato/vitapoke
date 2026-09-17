@@ -1,13 +1,13 @@
 from pathlib import Path
 import subprocess,os,json
 base=Path(__file__).resolve().parent
-ar='@PSPDEV@/bin/psp-ar'
+ar='@TOOLBIN@ar'
 archive=base/'libnative-filtered.a';archive.write_bytes((base.parent/'native-sdk-probe/libnative-sdk-probe.a').read_bytes())
 names=subprocess.check_output([ar,'t',str(archive)],text=True).splitlines()
 remove=[n for n in names if '__os__' in n or '__pxi__' in n or n=='libntr__libraries__card__src__card_common.c.o' or n in ['libntr__libraries__snd__src__snd_bank.c.o','libntrsystem__libraries__snd__src__sndarc_loader.c.o','libntr__libraries__mi__src__mi_memory.c.o','libntr__libraries__mi__src__mi_dma.c.o']]
 subprocess.run([ar,'d',str(archive)]+remove,check=True)
 overrides=json.loads((base/'override-symbols.json').read_text())
-objcopy='@PSPDEV@/bin/psp-objcopy'
+objcopy='@TOOLBIN@objcopy'
 for name in ['libplatinum-probe.a','libplatinum-internal.a','libnetwork-probe.a']:
  subprocess.run([objcopy]+['--weaken-symbol='+s for s in overrides]+[str(base.parent/'native-app/overlays/libplatinum-overlays.a') if name=='libplatinum-probe.a' else str(base.parent/'native-probe'/name),str(base/name)],check=True)
 subprocess.run([objcopy]+['--weaken-symbol='+s for s in overrides]+[str(archive)],check=True)

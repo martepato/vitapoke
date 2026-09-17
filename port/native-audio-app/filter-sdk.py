@@ -3,7 +3,7 @@
 from pathlib import Path
 import subprocess,shutil
 p=Path(__file__).resolve().parent
-ar='@PSPDEV@/bin/psp-ar'
+ar='@TOOLBIN@ar'
 src=p.parent/'native-sdk-probe/libnative-sdk-probe.a'
 names=subprocess.check_output([ar,'t',str(src)],text=True).splitlines()
 keep_os={'os_alloc.c','os_printf.c','os_vramExclusive.c'}

@@ -3,17 +3,20 @@
 #   ./build-vita.sh setup     check requirements, download the pinned VitaSDK, build vitaGL
 #   ./build-vita.sh check     run the Vita checks that do not need a ROM (tests/vita/run.sh)
 #   ./build-vita.sh emu-check run the platform layer's runtime checks in the Vita3K emulator
+#   ./build-vita.sh game      compile the SDK and the game's own code for ARM (scripts/vita.sh)
 #   ./build-vita.sh clean     remove the Vita build output (downloads in .cache are kept)
 #
-# Building a game is not wired up yet: the port's GPU, audio and packaging layers are still being
-# written, and the parts that exist are the ones `check` exercises. `./build.sh platinum|soulsilver`
-# continues to build for the PSP. docs/VITA.md tracks what is left.
+# `game` compiles everything that does not need the renderer: the DS SDK replacement and all 1016 of
+# the game's own C files, for ARM. Linking is not wired up yet -- that needs the renderer, the audio
+# backend and the overlay layout. docs/VITA.md tracks what is left.
 source "$(dirname "$0")/scripts/common.sh"
 
 CMD="${1:-}"; shift || true
-while [ $# -gt 0 ]; do case "$1" in
-  *) die "unknown option $1";;
-esac; done
+# Remaining arguments are passed to the subcommand (game takes --rom).
+case "$CMD" in
+  game) ;;
+  *) [ $# -eq 0 ] || die "unknown option $1";;
+esac
 
 case "$CMD" in
   setup)
@@ -33,18 +36,23 @@ case "$CMD" in
     [ -x "$VITASDK/bin/arm-vita-eabi-gcc" ] || die "VitaSDK not installed. Run: ./build-vita.sh setup"
     exec bash "$ROOT/tests/vita/run.sh"
     ;;
+  game)
+    [ -x "$VITASDK/bin/arm-vita-eabi-gcc" ] || die "VitaSDK not installed. Run: ./build-vita.sh setup"
+    shift 0
+    exec bash "$ROOT/scripts/vita.sh" "$@"
+    ;;
   emu-check)
     [ -x "$VITASDK/bin/arm-vita-eabi-gcc" ] || die "VitaSDK not installed. Run: ./build-vita.sh setup"
     exec bash "$ROOT/tests/vita/vita3k.sh"
     ;;
   clean)
-    rm -rf "$ROOT/.work/vita-tests" "$ROOT/.work/vita-gen" "$ROOT/.work/vita3k" "$ROOT/dist/vita"
+    rm -rf "$ROOT/.work/vita-tests" "$ROOT/.work/vita-gen" "$ROOT/.work/vita3k" "$ROOT/.work/vita" "$ROOT/dist/vita"
     log "Removed the Vita build output (downloads in .cache kept)"
     ;;
   platinum|soulsilver)
-    die "the Vita build cannot build a game yet: the renderer, the audio backend and VPK packaging are still being written (see docs/VITA.md). ./build.sh $CMD --rom <file.nds> builds it for the PSP."
+    die "use ./build-vita.sh game to compile for the Vita. A linked, runnable build needs the renderer and the audio backend (see docs/VITA.md)."
     ;;
   *)
-    die "usage: ./build-vita.sh setup|check|emu-check|clean   (see docs/VITA.md)"
+    die "usage: ./build-vita.sh setup|check|game|emu-check|clean   (see docs/VITA.md)"
     ;;
 esac

@@ -49,17 +49,65 @@ Everything in this section was built and linked with the pinned toolchain.
 - **Packaging.** `arm-vita-eabi-gcc -Wl,-q` → `vita-elf-create` → `vita-make-fself` → `vita-pack-vpk`
   produces a loadable VPK. Proven with the vitaGL feature check, not yet wired into a build.
 
+- **The game's own code, compiled for ARM.** `./build-vita.sh game` (scripts/vita.sh) fetches the
+  pinned decompilation, stages the tree for ARM, generates the decompilation's headers, compiles the DS
+  SDK replacement, and then compiles **all 1016 of the game's C files: 1016 / 1016, no failures.** The
+  output is real ARMv7 Thumb-2 objects. This was the largest unknown in the project and it is now
+  answered: the decompiled game is portable. Six minutes from a clean tree, no ROM needed.
+
 Run it with:
 
 ```sh
 ./build-vita.sh setup     # pinned VitaSDK + vitaGL, about 100 MB, one time
 ./build-vita.sh check     # the checks that need no ROM
+./build-vita.sh game      # the SDK and the game's own code, compiled for ARM
 ```
 
 `check` fetches libntr (the DS SDK replacement) because the platform layer is compiled against its
 headers.
 
-`./build.sh platinum|soulsilver` still builds for the PSP and is unaffected.
+The PSP build (`./build.sh`) is **no longer a maintained target**. Its scripts are still present and
+the build machinery is still target-selectable (`PSPOKE_TARGET=psp`), but nothing verifies it any more
+and the Vita is now the default. Removing it outright is a separate decision.
+
+## What compiling the game for ARM turned up
+
+Four things stood between the tree and an ARM compile. The first is by far the most important, and it
+is the kind of problem that does not announce itself.
+
+- **The ARM EABI makes enums as small as they fit, and the game assumes four bytes.** `enum { A, B }`
+  is one byte under the EABI default, so *every struct containing an enum changes size* -- silently,
+  with no diagnostic. libntr catches a little of it by asserting struct sizes (that is how it surfaced:
+  `sizeof(CARDiCommandArg)` came out 92 where the SDK requires a multiple of 32), but most of it would
+  simply have been wrong. The 512 KB save file has a fixed layout that enum-bearing structs are written
+  into, so the failure mode was saves silently incompatible with the DS. **`-fno-short-enums` is
+  load-bearing** and is set for the whole Vita build in `scripts/stage.sh`.
+- **libntr wants SDL.** On any target that is not `SDK_BUILD_ARM` its OS headers declare mutexes,
+  alarms and threads in terms of SDL types. That is libntr's property, not the PSP's. VitaSDK ships no
+  SDL, so `port/vita/sdl2-shim` declares the handful of names libntr refers to and `scripts/deps-vita.sh`
+  installs them where the toolchain looks. Some of those declarations are deliberately never
+  implemented: they belong to libntr modules (`os_thread.c`, `os_mutex.c`, `os_alarm.c`, `os_tick.c`,
+  `os_message.c`, `fs_file.c`) that this port replaces and that `filter-sdk.py` drops before the link.
+- **Two header assumptions that PSPDEV happened to satisfy.** libntr's `nitro/card/backup.h` calls
+  `malloc` and `free` without declaring them, and `fs_file.c` uses `tolower` the same way, both relying
+  on the including translation unit. `stdlib.h` and `ctype.h` are force-included for the Vita build.
+- **GCC 15 promoted some old-C diagnostics to errors.** This is decompiled code full of casts the
+  original compiler accepted, so `-Wno-incompatible-pointer-types` puts one of them back to a warning
+  -- the same flag the SoulSilver half of the tree already passed.
+
+Two smaller things, both in `port/` rather than upstream:
+
+- pspoke's own patch to the decompilation widened seven `#ifdef SDK_BUILD_ARM` conditionals with a
+  console name, where what they actually ask is whether pointers are 32 bits. They now say
+  `#if __SIZEOF_POINTER__ == 4`, which is the real question, comes from the compiler, and cannot drift
+  as targets are added.
+- The decompilation's `src/port/gui_*.c` is the PC port's debug GUI -- Dear ImGui over SDL with a GL
+  context, for a cheat menu and map jump. It is not game code and is never linked into a console build,
+  so the Vita build does not compile it. It was also the only thing in the tree that wanted real SDL.
+
+What is left before anything runs: the renderer, the audio backend, and the link step. The overlay
+layout in particular needs a linker script of its own -- the PSP build edits PSPSDK's PRX script, which
+has no Vita counterpart -- and the per-overlay ROM bounds table needs your ROM.
 
 ## Verifying against emulated hardware
 
@@ -308,12 +356,15 @@ bound and has no Vita counterpart — that check simply goes away, along with th
 | Pinned VitaSDK toolchain | Done (`scripts/toolchain-vita.sh`) |
 | vitaGL and math-neon, no `libshacccg.suprx` needed | Done (`scripts/deps-vita.sh`, `port/vita/shark_stub.c`) |
 | Platform layer: arena, tick, interrupts, threads, alarms, touch, clock | Done; 27 runtime checks pass in Vita3K |
+| Build machinery: one tree, target-selected toolchain and flags | Done (`scripts/stage.sh` placeholders, `port/build/vita.mak`) |
+| DS SDK replacement compiled for ARM | Done: 270/271, and the one failure is a module the filter drops |
+| The game's own 1016 C files compiled for ARM | Done: 1016/1016 |
+| Link step: overlay layout, VPK output | Not started; needs a linker script and the renderer |
 | Runtime checks in the Vita3K emulator | Done (`./build-vita.sh emu-check`) |
 | VPK packaging path | Proven, not wired into a build |
 | Renderer | Native GXM backend chosen, shaders compiled on the console; not written |
 | Audio (`sceSasCore` replacement) | Not started |
 | On-screen keyboard (`sceUtility` → `sceIme`) | Not started |
-| MIPS inline assembly | Not started |
+| MIPS inline assembly | Done: `mov %0, sp` and `dmb ish`, guarded on `__arm__` |
 | Touch input | Done: `TP_*` reads the front panel through `sceTouch`, no cursor and no stylus mode |
 | Screen layout | Constants in `port/vita/include/vitapoke.h`; the renderer has to honour them |
-| Build and link machinery | Not started |

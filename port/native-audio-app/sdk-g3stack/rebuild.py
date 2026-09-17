@@ -2,7 +2,7 @@
 from pathlib import Path
 import subprocess,re,sys,os
 T=Path('@WORK@'); src=T/'native-audio-app'/'sdk-g3stack'; app=T/'native-audio-app'; ov=app/'overlays'
-AR='@PSPDEV@/bin/psp-ar'; GCC='@PSPDEV@/bin/psp-gcc'
+AR='@TOOLBIN@ar'; GCC='@TOOLBIN@gcc'
 override='-I'+str(src/'include')
 obj=src/'obj'; obj.mkdir(exist_ok=True)
 # --- SDK (flags from native-sdk-probe/compile.py)
@@ -10,7 +10,7 @@ ns={'__file__':str(T/'native-sdk-probe/compile.py')};exec((T/'native-sdk-probe/c
 sflags=[override]+ns['flags']+['-DOPT_CMDLIST_BORROW']  # gecom.c/sbc.c: per-op lists on the stack, borrowed by the renderer
 patched={'libntr__libraries__gx__src__g3imm.c.o':src/'libntr-gx/g3imm.c','libntr__libraries__gx__src__g3_util.c.o':src/'libntr-gx/g3_util.c',
  'libntrsystem__libraries__g3d__src__gecom.c.o':src/'g3d/gecom.c','libntrsystem__libraries__g3d__src__sbc.c.o':src/'g3d/sbc.c'}
-members=subprocess.check_output(['@PSPDEV@/bin/psp-nm','-A',str(app/'libsdk-filtered.a.base')],text=True,stderr=subprocess.DEVNULL)
+members=subprocess.check_output(['@TOOLBIN@nm','-A',str(app/'libsdk-filtered.a.base')],text=True,stderr=subprocess.DEVNULL)
 sdkm=sorted(set(re.findall(r'^[^:]*:([^:]*):\s+U SIM_HandleG3Command$',members,re.M)))
 built=[]
 for m in sdkm:
@@ -28,7 +28,7 @@ code=(ov/'build.py').read_text().split('if __import__')[0]
 code=code.replace("flags[1:1]=['-I'+str(p/'include')]","flags[1:1]=['-I'+str(p/'include'),%r]"%override)
 code=code.replace("out=p/'objects'","out=p/'objects-g3stack'")
 ns2={'__file__':str(ov/'build.py')};exec(code,ns2)
-gm=subprocess.check_output(['@PSPDEV@/bin/psp-nm','-A',str(ov/'libplatinum-overlays.a.base')],text=True,stderr=subprocess.DEVNULL)
+gm=subprocess.check_output(['@TOOLBIN@nm','-A',str(ov/'libplatinum-overlays.a.base')],text=True,stderr=subprocess.DEVNULL)
 gm=sorted(set(re.findall(r'^[^:]*:([^:]*):\s+U SIM_HandleG3Command$',gm,re.M)))
 inv={v[:-2].replace('/','__')+'.o':v for v in ns2['files']}
 outs=[]

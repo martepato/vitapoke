@@ -9,7 +9,7 @@ OUT=BASE/'generated';OUT.mkdir(exist_ok=True)
 OBJ=BASE/'objects';OBJ.mkdir(exist_ok=True)
 CPPINC=[SRC/'include',SRC/'files',BASE.parent/'soulsilver-native-core/include']
 OVERLAYS={name:i for i,name in enumerate(re.findall(r'^Overlay\s+(\w+)',(SRC/'main.lsf').read_text(),re.M))}
-NM=subprocess.check_output(['@PSPDEV@/bin/psp-nm','-u',str(BASE.parent/'soulsilver-native-core/libsoulsilver-c.a')],text=True)
+NM=subprocess.check_output(['@TOOLBIN@nm','-u',str(BASE.parent/'soulsilver-native-core/libsoulsilver-c.a')],text=True)
 EXPORTED={m[1] for m in re.finditer(r'\bU\s+(\S+)',NM)}
 SECTIONS={'.rodata':('a','progbits'),'.data':('aw','progbits'),'.bss':('aw','nobits')}
 allowed={'.byte','.short','.hword','.word','.space','.skip','.zero','.ascii','.asciz','.string','.balign','.align','.size','.extern','.macro','.endm'}
@@ -61,13 +61,13 @@ def convert(p):
    line=re.sub(r'FS_OVERLAY_ID\((\w+)\)',lambda m:str(OVERLAYS[m[1]]),line)
    text.append(re.sub(r'\b[A-Za-z_]\w*\b',lambda m:mapping.get(m[0],m[0]),line))
  target=OUT/(stem+'.S');target.write_text('\n'.join(text)+'\n')
- command=['@PSPDEV@/bin/psp-gcc','-c','-G0','-DSOULSILVER','-DENGLISH','-DPM_ASM']+['-I'+str(x) for x in CPPINC]+[str(target),'-o',str(OBJ/(stem+'.o'))]
+ command=['@TOOLBIN@gcc','-c',*'@TARGETCC@'.split(),'-DSOULSILVER','-DENGLISH','-DPM_ASM']+['-I'+str(x) for x in CPPINC]+[str(target),'-o',str(OBJ/(stem+'.o'))]
  r=subprocess.run(command,cwd=SRC,text=True,capture_output=True);(OBJ/(stem+'.log')).write_text(r.stderr)
  result['status']='pass' if r.returncode==0 else 'compile-fail';result['errors']=r.stderr.splitlines()[-8:]
  return result
 with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:results=list(pool.map(convert,sorted((SRC/'asm').glob('*.s'))))
 (BASE/'inventory.json').write_text(json.dumps(results,indent=2)+'\n')
 passed=[str(OBJ/(Path(x['file']).stem+'.o')) for x in results if x['status']=='pass']
-if passed:subprocess.run(['@PSPDEV@/bin/psp-ar','rcs',str(BASE/'libsoulsilver-data.a'),*passed],check=True)
+if passed:subprocess.run(['@TOOLBIN@ar','rcs',str(BASE/'libsoulsilver-data.a'),*passed],check=True)
 from collections import Counter
 print(Counter(x['status'] for x in results));print('data symbols',sum(len(x.get('symbols',{})) for x in results if x['status']=='pass'))

@@ -4,13 +4,12 @@ h=Path(__file__).resolve().parent;p=h/'player-control-proof';p.mkdir(exist_ok=Tr
 p.joinpath('Makefile').write_text('''TARGET = ss-player-control-proof
 OBJS = main.o
 LIBS = ../libss-native-translated.a
-CFLAGS = -O2 -G0 -std=gnu99 -ffunction-sections -fdata-sections
+CFLAGS = -O2 @TARGETCC@ -std=gnu99 -ffunction-sections -fdata-sections
 LDFLAGS = -Wl,--gc-sections
 BUILD_PRX = 1
 EXTRA_TARGETS = EBOOT.PBP
 PSP_EBOOT_TITLE = SoulSilver player control closure proof
-PSPSDK = $(shell psp-config --pspsdk-path)
-include $(PSPSDK)/lib/build.mak
+include @BUILDMAK@
 ''')
 ps=['typedef struct FieldSystem FieldSystem;'];defs=[];ids={n:i for i,n in enumerate(control.SCALARS)}
 for name,(ret,args) in control.SCALARS.items():

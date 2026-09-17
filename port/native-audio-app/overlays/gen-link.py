@@ -10,7 +10,9 @@ for m in mods:
 ld+=['} INSERT AFTER .data;'];(p/'overlays.ld').write_text('\n'.join(ld)+'\n')
 (p/'ranges.h').write_text('\n'.join(decl)+'\nstatic struct Range ranges[]={\n'+',\n'.join(rows)+'\n};\n')
 
-base=Path('@PSPDEV@/psp/sdk/lib/linkfile.prx').read_text()
+# PSP only: the overlay layout is built by editing PSPSDK's PRX linker script. The Vita
+# link step needs its own script rather than an edit of this one (see docs/VITA.md).
+base=Path('@PRXLINKFILE@').read_text()
 # Linker GC must retain the PSP syslib exports, including module_start.
 base=base.replace('.lib.ent        : { *(.lib.ent) }', '.lib.ent        : { KEEP(*(.lib.ent)) }')
 # Retail CheckElfSectionPRX rejects sh_offset+sh_size >=32MiB even for NOBITS.

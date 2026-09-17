@@ -14,12 +14,12 @@ for rel in sys.argv[1:]:
  q=subprocess.run(cmd,cwd=r,capture_output=True,text=True);print(rel,'rc',q.returncode);print('\n'.join(l for l in q.stderr.splitlines() if 'error' in l or 'warning: implicit' in l or 'Wreturn' in l))
  if q.returncode:sys.exit(1)
  if i is not None:
-  sec=subprocess.check_output(['@PSPDEV@/bin/psp-objdump','-h',str(obj)],text=True)
+  sec=subprocess.check_output(['@TOOLBIN@objdump','-h',str(obj)],text=True)
   ren=[]
   for name in re.findall(r'^\s*\d+\s+(\S+)\s+[0-9a-f]+',sec,re.M):
    kind='bss' if name.startswith(('.bss','.sbss')) else 'data' if name.startswith(('.data','.sdata')) else 'sinit' if name=='.psp_sinit' else None
    if kind:ren+=['--rename-section',name+f'=.nativeov.{i}.{kind}'+name]
-  if ren:subprocess.run(['@PSPDEV@/bin/psp-objcopy',*ren,str(obj)],check=True)
+  if ren:subprocess.run(['@TOOLBIN@objcopy',*ren,str(obj)],check=True)
  objs.append(str(obj))
-subprocess.run(['@PSPDEV@/bin/psp-ar','r',str(p/'libplatinum-overlays.a'),*objs],check=True)
+subprocess.run(['@TOOLBIN@ar','r',str(p/'libplatinum-overlays.a'),*objs],check=True)
 print('archive',subprocess.check_output(['md5','-q',str(p/'libplatinum-overlays.a')],text=True).strip())

@@ -15,7 +15,7 @@ for group in [comm,sound,direction,control]:
  for file,names in group.SELECTION.items():extra.setdefault(file,[]).extend(names)
 for file,names in extra.items():
  if file=='unk_02004A44.s':
-  cpp=Path(os.environ.get('PSPDEV',Path.home()/'pspdev'))/'bin/psp-gcc'
+  cpp=Path('@TOOLBIN@gcc')
   text=subprocess.check_output([str(cpp),'-E','-P','-x','assembler-with-cpp','-I'+str(t.SRC.parent/'include'),str(t.SRC/file)],text=True)
   (H/'sound-preprocessed.s').write_text(text)
  else:text=(t.SRC/file).read_text()
@@ -86,19 +86,19 @@ for name,(ret,types) in exports.items():
 (H/'library.h').write_text('\n'.join(header)+'\n')
 (H/'library.c').write_text('\n\n'.join(code+wrappers)+'\n')
 (H/'library-manifest.json').write_text(json.dumps(dict(implementations=manifest,exports=exports,sdk_calls=sdk,manual_exports={'MIi_CpuClearFast':['void','uint32_t','void *','uint32_t'],'sub_02034044':['int','int'],'GF_SndSetAllocatableChannelForBGMPlayer':['void','uint32_t'],'sub_02005910':['void','int'],'sub_02005908':['int']}),indent=2)+'\n')
-pspdev=Path(os.environ.get('PSPDEV',Path.home()/'pspdev'));cc=pspdev/'bin/psp-gcc';ar=pspdev/'bin/psp-ar'
-subprocess.run([str(cc),'-O2','-G0','-std=gnu99','-ffunction-sections','-fdata-sections','-c',str(H/'library.c'),'-o',str(H/'library.o')],check=True)
+cc=Path('@TOOLBIN@gcc');ar=Path('@TOOLBIN@ar')
+subprocess.run([str(cc),'-O2',*'@TARGETCC@'.split(),'-std=gnu99','-ffunction-sections','-fdata-sections','-c',str(H/'library.c'),'-o',str(H/'library.o')],check=True)
 objdir=H/'library-objects';objdir.mkdir(exist_ok=True);objects=[]
 for name,part in generated_parts.items():
  source=objdir/(name+'.c');obj=objdir/(name+'.o')
  source.write_text(t.prefix+'\n'+'\n'.join(protos)+'\n'+part+'\n#include "../library.h"\n'+export_wrappers.get(name,'')+'\n')
- subprocess.run([str(cc),'-O2','-G0','-std=gnu99','-ffunction-sections','-fdata-sections','-c',str(source),'-o',str(obj)],check=True);objects.append(str(obj))
+ subprocess.run([str(cc),'-O2',*'@TARGETCC@'.split(),'-std=gnu99','-ffunction-sections','-fdata-sections','-c',str(source),'-o',str(obj)],check=True);objects.append(str(obj))
 tail_obj=objdir/'sound_tailcalls.o'
-subprocess.run([str(cc),'-O2','-G0','-std=gnu99','-ffunction-sections','-fdata-sections','-c',str(H/'sound_tailcalls.c'),'-o',str(tail_obj)],check=True);objects.append(str(tail_obj))
+subprocess.run([str(cc),'-O2',*'@TARGETCC@'.split(),'-std=gnu99','-ffunction-sections','-fdata-sections','-c',str(H/'sound_tailcalls.c'),'-o',str(tail_obj)],check=True);objects.append(str(tail_obj))
 mode_obj=objdir/'sub_02034044.o'
-subprocess.run([str(cc),'-O2','-G0','-std=gnu99','-ffunction-sections','-fdata-sections','-c',str(H/'communication_mode.c'),'-o',str(mode_obj)],check=True);objects.append(str(mode_obj))
+subprocess.run([str(cc),'-O2',*'@TARGETCC@'.split(),'-std=gnu99','-ffunction-sections','-fdata-sections','-c',str(H/'communication_mode.c'),'-o',str(mode_obj)],check=True);objects.append(str(mode_obj))
 obj=objdir/'MIi_CpuClearFast.o'
-subprocess.run([str(cc),'-O2','-G0','-std=gnu99','-ffunction-sections','-fdata-sections','-c',str(H/'mi_clear_fast.c'),'-o',str(obj)],check=True);objects.append(str(obj))
+subprocess.run([str(cc),'-O2',*'@TARGETCC@'.split(),'-std=gnu99','-ffunction-sections','-fdata-sections','-c',str(H/'mi_clear_fast.c'),'-o',str(obj)],check=True);objects.append(str(obj))
 archive=H/'libss-native-translated.new.a'
 if archive.exists():archive.unlink()
 subprocess.run([str(ar),'rcs',str(archive)]+objects,check=True)

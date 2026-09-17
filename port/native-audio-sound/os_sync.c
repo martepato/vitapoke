@@ -24,7 +24,14 @@ void DC_FlushRange(const void*p,u32 n){if(n)sceKernelDcacheWritebackInvalidateRa
 void DC_StoreRange(const void*p,u32 n){if(n)sceKernelDcacheWritebackRange(p,n);}
 void DC_InvalidateRange(void*p,u32 n){if(n)sceKernelDcacheInvalidateRange(p,n);}
 void DC_FlushAll(void){sceKernelDcacheWritebackInvalidateAll();}
+/* The DS drains the ARM9 write buffer here so a store is visible to the hardware that follows it.
+ * MIPS spells that barrier `sync`; on ARM it is a data memory barrier. `dmb ish` is the inner-shareable
+ * domain, which covers the other cores and the GPU's view of memory the port writes. */
+#if defined(__arm__)
+void DC_WaitWriteBufferEmpty(void){__asm__ volatile("dmb ish":: :"memory");}
+#else
 void DC_WaitWriteBufferEmpty(void){__asm__ volatile("sync":: :"memory");}
+#endif
 // This flag means the Nitro emulator's private 0x04FFF200 interface, which PSP lacks.
 BOOL OS_IsRunOnEmulator(void){return FALSE;}
 // Yield instead of burning host cycles; sound command completion must be serviced

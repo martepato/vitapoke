@@ -1,7 +1,7 @@
 TARGET = native-app
 OBJS = sas_out.o vram_dirty.o stackprobe.o ctrdg_absent.o search_disabled.o cadence.o sdl_threads.o power.o audio_bank.o audio_loader.o audio_out.o audio_backend.o audio_seq.o audio_exchannel.o audio_channel.o audio_engine.o mic_pm.o os_sync.o offline.o gx_dma.o frame.o owner_lock.o threads.o alarms.o overlay.o main.o config.o platform.o input.o romfs.o backup.o backing.o graphics_registers.o trainer_ai.o mi_memory.o mi_dma.o memprobe.o osk.o naming_osk.o
 INCDIR = ../native-audio-probe/include overlays/include ../native-graphics/libntr/libraries/mi/src ../native-backup-probe/include ../native-fonts/include ../native-input/include ../native-startup/include ../native-probe/backing/include ../native-graphics/alias-proof/include ../native-probe/generated ../native-probe/pokeplatinum/include ../native-probe/libntrsystem/include ../native-graphics/libntr/include
-CFLAGS = -DPM_KEEP_ASSERTS -O2 -G0 -std=gnu99 -DSDL_MAIN_HANDLED -DSDK_PORT -DSDK_X86 -DSDK_BUILD_PSP -DSDK_VERSION_MAJOR=4 -DSDK_TS -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM -DPOKEPLATINUM_GENERATED_ENUM -ffunction-sections -fdata-sections -include ../native-probe/pokeplatinum/include/pch/global_pch.h
+CFLAGS = -DPM_KEEP_ASSERTS -O2 @TARGETCC@ -std=gnu99 -DSDL_MAIN_HANDLED -DSDK_PORT -DSDK_X86 -D@SDKBUILD@ -DSDK_VERSION_MAJOR=4 -DSDK_TS -DSDK_4M -DSDK_FINALROM -DNNS_FINALROM -DPOKEPLATINUM_GENERATED_ENUM -ffunction-sections -fdata-sections -include ../native-probe/pokeplatinum/include/pch/global_pch.h
 # printf is invisible on real hardware, so every build that goes on a card
 # mirrors its log to native-memlog.txt next to the EBOOT.
 CFLAGS += -DPSP_NATIVE_MEMLOG=1
@@ -39,11 +39,10 @@ CFLAGS += -DPSP_NATIVE_GAME_PROF
 LDFLAGS += -Wl,--wrap=ApplicationManager_Exec,--wrap=CommSys_Update,--wrap=SysTaskManager_ExecuteTasks,--wrap=LandDataManager_RenderLoadedMaps,--wrap=MapPropManager_Render2,--wrap=FieldEffectManager_Render,--wrap=OverworldAnimManagerList_Render,--wrap=BillboardLists_Draw,--wrap=SoundSystem_Tick,--wrap=sub_020241CC,--wrap=ReadKeypadAndTouchpad
 LDFLAGS += -Wl,--wrap=malloc,--wrap=free,--wrap=memalign,--wrap=realloc,--wrap=calloc
 endif
-PSPSDK = $(shell psp-config --pspsdk-path)
 # Own game ID in PARAM.SFO (PSPSDK defaults to UCJS10041, shared with lots of homebrew; custom firmware
 # applies per-game settings by this ID).
 SFOFLAGS += -s DISC_ID=NATP00001
-include $(PSPSDK)/lib/build.mak
+include @BUILDMAK@
 romfs.o: services/romfs.c
 	$(CC) $(CFLAGS) -c $< -o $@
 backup.o: ../native-backup-probe/backup.c

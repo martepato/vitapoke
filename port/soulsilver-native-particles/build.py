@@ -59,4 +59,4 @@ def compile(p):
 with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:results=list(pool.map(compile,(b/'src').glob('*.c')))
 print(results);(b/'compile-results.json').write_text(json.dumps(results,indent=2)+'\n')
 if not all(x['ok'] for x in results):raise SystemExit(1)
-subprocess.run(['@PSPDEV@/bin/psp-ar','rcs',str(b/'libss-particles.a'),*[str(x) for x in (b/'objects').glob('*.o')]],check=True)
+subprocess.run(['@TOOLBIN@ar','rcs',str(b/'libss-particles.a'),*[str(x) for x in (b/'objects').glob('*.o')]],check=True)

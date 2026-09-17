@@ -5,7 +5,7 @@ roots=[top/'native-graphics/libntr',top/'native-probe/libntrsystem']
 inc=[top/'native-probe/generated']+[r/'include' for r in roots]
 for r in roots:
  inc.extend(p for p in (r/'libraries').glob('*/include') if p.is_dir())
-flags=['-ffile-prefix-map='+str(top)+'=/pspoke/build/tree/test-out/deterministic-path-token-----','-O2','-G0','-std=gnu99','-ffunction-sections','-fdata-sections','-DSDK_VERSION_MAJOR=4','-include',str(roots[0]/'include/pch/nitro_pch.h'),'-DSDK_PORT','-DSDK_X86','-DSDK_TS','-DSDK_4M','-DSDK_FINALROM','-DNNS_FINALROM','-D_NITRO','-DSDL_MAIN_HANDLED']+['-I'+str(p) for p in inc]
+flags=['-ffile-prefix-map='+str(top)+'=/pspoke/build/tree/test-out/deterministic-path-token-----','-O2',*'@TARGETCC@'.split(),'-std=gnu99','-ffunction-sections','-fdata-sections','-DSDK_VERSION_MAJOR=4','-include',str(roots[0]/'include/pch/nitro_pch.h'),'-DSDK_PORT','-DSDK_X86','-DSDK_TS','-DSDK_4M','-DSDK_FINALROM','-DNNS_FINALROM','-D_NITRO','-DSDL_MAIN_HANDLED']+['-I'+str(p) for p in inc]
 entries=[]
 for root in roots:
  for manifest in sorted((root/'libraries').glob('*/src/meson.build')):
@@ -29,7 +29,7 @@ def compile(entry):
  repo,src=entry; name=repo+'__'+str(src.relative_to(next(r for r in roots if r.name==repo))).replace('/','__')
  obj=objdir/(name+'.o')
  if obj.exists():obj.unlink()
- result=subprocess.run(['@PSPDEV@/bin/psp-gcc']+flags+['-c',str(src),'-o',str(obj)],capture_output=True,text=True)
+ result=subprocess.run(['@TOOLBIN@gcc']+flags+['-c',str(src),'-o',str(obj)],capture_output=True,text=True)
  (objdir/(name+'.log')).write_text(result.stderr)
  return dict(source=str(src),ok=result.returncode==0,errors=[l for l in result.stderr.splitlines() if 'error:' in l])
 with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:results=list(pool.map(compile,entries))

@@ -2,8 +2,8 @@ from pathlib import Path
 import re,json,subprocess,concurrent.futures
 b=Path(__file__).resolve().parent;out=b/'networkobjects';out.mkdir(exist_ok=True)
 incs=[b.parent/'native-backup-probe/include',b.parent/'native-fonts/include',b.parent/'native-input/include',b.parent/'native-startup/include',b/'backing/include',b.parent/'native-graphics/alias-proof/include',b/'generated',b.parent/'native-graphics/libntr/include',b/'libntrsystem/include',b/'libntrwifi/include',b/'libntrdwc/include',b/'libntrdwc/include/gs',b/'libntrdwc/include/base',b/'libvct/include']
-incs.insert(0,Path('@PSPDEV@/psp/sdk/include'))
-flags=['@PSPDEV@/bin/psp-gcc','-ffile-prefix-map='+str(b.parent)+'=/pspoke/build/tree/test-out/deterministic-path-token-----','-O2','-G0','-ffunction-sections','-fdata-sections','-std=gnu99','-DSDK_PORT','-DSDK_X86','-DSDK_CODE_X86','-DSDK_BUILD_PSP','-DSDK_VERSION_MAJOR=4','-DSDK_TS','-DSDK_4M','-DSDK_FINALROM','-DNNS_FINALROM','-D_NITRO','-DSDK_CW_FORCE_EXPORT_SUPPORT','-DLINK_PPWLOBBY']+['-I'+str(i) for i in incs]
+incs.insert(0,Path('@SDKINC@'))
+flags=['@TOOLBIN@gcc','-ffile-prefix-map='+str(b.parent)+'=/pspoke/build/tree/test-out/deterministic-path-token-----','-O2',*'@TARGETCC@'.split(),'-ffunction-sections','-fdata-sections','-std=gnu99','-DSDK_PORT','-DSDK_X86','-DSDK_CODE_X86','-D@SDKBUILD@','-DSDK_VERSION_MAJOR=4','-DSDK_TS','-DSDK_4M','-DSDK_FINALROM','-DNNS_FINALROM','-D_NITRO','-DSDK_CW_FORCE_EXPORT_SUPPORT','-DLINK_PPWLOBBY']+['-I'+str(i) for i in incs]
 files=[]
 for repo in ['libntrdwc','libntrwifi','libvct']:
  for m in (b/repo).rglob('meson.build'):
@@ -24,4 +24,4 @@ for x in res:
  if not x['ok']:print(x['file'], '\n'.join(x['errors'][:2]))
 a=b/'libnetwork-probe.a'
 if a.exists():a.unlink()
-subprocess.run(['@PSPDEV@/bin/psp-ar','rcs',str(a)]+[str(out/(str(p.relative_to(b)).replace('/','__')+'.o')) for p in files if not str(p.relative_to(b)).startswith('libvct/')],check=True)
+subprocess.run(['@TOOLBIN@ar','rcs',str(a)]+[str(out/(str(p.relative_to(b)).replace('/','__')+'.o')) for p in files if not str(p.relative_to(b)).startswith('libvct/')],check=True)

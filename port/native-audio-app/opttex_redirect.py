@@ -2,8 +2,8 @@
 PSPNativeVramW_* shims in vram_dirty.c (psp-objcopy --redefine-sym, no recompile). Run after sdk-g3stack/rebuild.py."""
 from pathlib import Path
 import subprocess, tempfile, shutil
-T = Path('@WORK@'); app = T/'native-audio-app'; BIN = Path('@PSPDEV@/bin')
-AR, OBJCOPY, NM = str(BIN/'psp-ar'), str(BIN/'psp-objcopy'), str(BIN/'psp-nm')
+T = Path('@WORK@'); app = T/'native-audio-app'
+AR, OBJCOPY, NM = '@TOOLBIN@ar', '@TOOLBIN@objcopy', '@TOOLBIN@nm'
 write_syms = {
     app/'libsdk-filtered.a': (['libntr__libraries__gx__src__gx_load3d.c.o', 'libntr__libraries__gx__src__gx_load2d.c.o'],
                               ['MIi_CpuCopy32', 'MIi_CpuCopy16', 'MI_DmaCopy32', 'MI_DmaCopy16', 'MI_DmaCopy32Async', 'memset', 'memcpy']),

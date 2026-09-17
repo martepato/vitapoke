@@ -39,7 +39,7 @@ phase_generated(){
 phase_services(){
   done_ services && return
   log "Building PSP services (memory/register backing, threads, audio, graphics)"
-  step backing       bash -c "cd '$T/native-probe/backing' && python3 generate.py && python3 generate_registers.py && make storage.o memory_layout.o device_registers.o && psp-ld -r storage.o memory_layout.o device_registers.o -o native-backing.o"
+  step backing       bash -c "cd '$T/native-probe/backing' && python3 generate.py && python3 generate_registers.py && make storage.o memory_layout.o device_registers.o && ${TOOLBIN}ld -r storage.o memory_layout.o device_registers.o -o native-backing.o"
   step gfx-registers bash -c "cd '$T/native-graphics/alias-proof' && python3 generate_registers.py && make graphics_registers.o"
   step melon-2d      make -C "$T/native-render-opt" native_gpu.o GPU2D_Soft.o
   local s

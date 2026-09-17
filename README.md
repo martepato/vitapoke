@@ -42,10 +42,13 @@ build time.
 - **Windows:** untested for building and running the games; the toolchain setup is confirmed on WSL2 (Ubuntu).
   Building works on macOS and Linux.
 
-A **native PS Vita port** is in progress and cannot build a game yet: the toolchain, the platform layer
-(threads, timing, touch input) and the packaging path work, and the renderer and audio backend do not
-exist. See [docs/VITA.md](docs/VITA.md). This is separate from running the PSP build on a Vita through
-Adrenaline, which works today.
+A **native PS Vita port** is in progress and is now the project's target. The toolchain, the platform
+layer (threads, timing, touch input) and the packaging path work, and the DS SDK and all 1016 of the
+game's C files compile for ARM (`./build-vita.sh game`). It cannot produce a runnable build yet: the
+renderer, the audio backend and the link step are still to be written. See
+[docs/VITA.md](docs/VITA.md).
+
+The **PSP build** (`./build.sh`) still exists but is no longer maintained or verified.
 
 ## What you need
 

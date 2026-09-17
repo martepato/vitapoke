@@ -20,7 +20,12 @@ void PSPNativeStackProbeInit(void)
     memset(&info, 0, sizeof info);
     info.size = sizeof info;
     int rc = sceKernelReferThreadStatus(sceKernelGetThreadId(), &info);
-    unsigned sp0; asm volatile("move %0, $sp" : "=r"(sp0));
+    unsigned sp0;
+#if defined(__arm__)
+    asm volatile("mov %0, sp" : "=r"(sp0));
+#else
+    asm volatile("move %0, $sp" : "=r"(sp0));
+#endif
     PSPNativeMemLog("[STACK] refer rc=%d stack=%p size=%u sp=%08x", rc, info.stack, (unsigned)info.stackSize, sp0);
     if (rc < 0) return;
     stackBase = (unsigned)(uintptr_t)info.stack;

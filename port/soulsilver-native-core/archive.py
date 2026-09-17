@@ -8,6 +8,6 @@ for src in sorted((b/'src').rglob('*.c')):
  rows.append({'name':name,'success':success})
  if success:objs.append(str(obj))
 tmp=b/'libsoulsilver-c.next.a';tmp.unlink(missing_ok=True)
-subprocess.run(['@PSPDEV@/bin/psp-ar','rcs',str(tmp),*objs],check=True);tmp.replace(out)
+subprocess.run(['@TOOLBIN@ar','rcs',str(tmp),*objs],check=True);tmp.replace(out)
 (b/'compile-results-all.json').write_text(json.dumps(rows,indent=2)+'\n')
 print(f'Archive has {len(objs)}/{len(rows)} real C units')
