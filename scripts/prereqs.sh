@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# prereqs.sh: check the host tools the build needs and offer to install any that are missing.
-# Called by build.sh. Never runs sudo without asking first (set PSPPOKE_ASSUME_YES=1 to skip the question,
-# e.g. in a non-interactive setup). Exit 0 when everything is present.
+# prereqs.sh [TOOL...] : check the host tools the build needs and offer to install any that are missing.
+# Called by build.sh (which needs the full set) and by build-vita.sh, which passes the smaller set its
+# setup step actually runs. Never runs sudo without asking first (set PSPPOKE_ASSUME_YES=1 to skip the
+# question, e.g. in a non-interactive setup). Exit 0 when everything is present.
 source "$(dirname "$0")/common.sh"
-TOOLS="git python3 make patch rsync curl tar"
+TOOLS="${*:-git python3 make patch rsync curl tar}"
 missing(){ local m="" t; for t in $TOOLS; do command -v "$t" >/dev/null 2>&1 || m="$m $t"; done; echo "${m# }"; }
 
 M=$(missing); [ -z "$M" ] && exit 0

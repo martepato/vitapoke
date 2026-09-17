@@ -6,6 +6,15 @@ CACHE="${PSPPOKE_CACHE:-$ROOT/.cache}"
 if [ -n "${PSPDEV:-}" ]; then PSPPOKE_OWN_TOOLCHAIN=1; else PSPPOKE_OWN_TOOLCHAIN=0; PSPDEV="$CACHE/pspdev"; fi
 export PSPDEV PSPPOKE_OWN_TOOLCHAIN
 export PATH="$PSPDEV/bin:$PATH"
+# Vita toolchain: your own install if VITASDK is set, otherwise the pinned copy scripts/toolchain-vita.sh
+# downloads. Only the Vita build (build-vita.sh) puts it on PATH; the PSP build never sees it.
+# VITAPOKE_OWN_TOOLCHAIN is decided once and inherited: build-vita.sh exports VITASDK to its children,
+# so a child that re-derived this from VITASDK alone would decide the download was the user's own install.
+if [ -z "${VITAPOKE_OWN_TOOLCHAIN:-}" ]; then
+  if [ -n "${VITASDK:-}" ]; then VITAPOKE_OWN_TOOLCHAIN=1; else VITAPOKE_OWN_TOOLCHAIN=0; VITASDK="$CACHE/vitasdk"; fi
+fi
+: "${VITASDK:=$CACHE/vitasdk}"
+export VITASDK VITAPOKE_OWN_TOOLCHAIN
 log(){ printf '\033[1m==> %s\033[0m\n' "$*"; }
 die(){ printf 'error: %s\n' "$*" >&2; exit 1; }
 # step NAME CMD... : run CMD in a subshell, keep its output in $LOGS/NAME.log, stop on failure.

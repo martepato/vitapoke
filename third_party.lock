@@ -9,3 +9,11 @@ metang            https://github.com/lhearachel/metang.git             d616519ce
 pokeplatinum      https://github.com/cybervisi0n/pokeplatinum.git      47c28d531ce409ad40748ef50fcc59ae22226227  none-published
 pokeheartgold-slop https://github.com/antonsynd/pokeheartgold-slop.git 808283ee256ca702d4fcf1407697b5d55f784a34  none-published
 pokeheartgold     https://github.com/pret/pokeheartgold.git            0985e8718df4f25e64d6507d89c0c97c0d288981  none-published (asset member-order audit for SoulSilver)
+
+# Vita port (build-vita.sh). vitaGL is the OpenGL-over-GXM layer the sceGu shim in port/vita/gu targets;
+# math-neon is its ARM NEON math dependency. vitaShaRK is fetched for its header only: vitaGL.h includes
+# it, but the runtime shader compiler it wraps is stubbed out in port/vita/shark_stub.c so a console does
+# not need libshacccg.suprx.
+vitaGL            https://github.com/Rinnegatamante/vitaGL.git         1ffcb99e65d979722c37eedd7298e9487f8eedb1  LGPL-3.0
+math-neon         https://github.com/Rinnegatamante/math-neon.git      0faab814782c071ff4015527f1ca955ab1ccc470  MIT
+vitaShaRK         https://github.com/Rinnegatamante/vitaShaRK.git      df24065e65098b2d1ac533760109ad4367573f28  LGPL-3.0 (header only)

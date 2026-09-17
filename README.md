@@ -42,6 +42,11 @@ build time.
 - **Windows:** untested for building and running the games; the toolchain setup is confirmed on WSL2 (Ubuntu).
   Building works on macOS and Linux.
 
+A **native PS Vita port** is in progress and cannot build a game yet: the toolchain, the platform layer
+(threads, timing, touch input) and the packaging path work, and the renderer and audio backend do not
+exist. See [docs/VITA.md](docs/VITA.md). This is separate from running the PSP build on a Vita through
+Adrenaline, which works today.
+
 ## What you need
 
 - A PSP-2000, 3000, Go or E1000, or a PS Vita/PSTV running Adrenaline, with custom firmware that can launch
@@ -201,6 +206,9 @@ If you find pspoke useful, their projects are the ones to thank and support.
 - [pret/pokeheartgold](https://github.com/pret/pokeheartgold): used to check SoulSilver asset ordering.
 - [ndspy](https://github.com/RoadrunnerWMC/ndspy) (GPL-3.0, bundled): reads the overlay table from your SoulSilver ROM.
 - [metang](https://github.com/lhearachel/metang), [PSPDEV](https://github.com/pspdev).
+- Vita port only: [vitaGL](https://github.com/Rinnegatamante/vitaGL) (LGPL-3.0) for OpenGL over GXM,
+  [math-neon](https://github.com/Rinnegatamante/math-neon) (MIT), [vitaShaRK](https://github.com/Rinnegatamante/vitaShaRK)
+  (LGPL-3.0, header only) and [VitaSDK](https://vitasdk.org). All downloaded at build time, not included here.
 
 pspoke is licensed under the **GNU General Public License v3.0** (`LICENSE`) because its renderer is derived from
 melonDS. Third-party sources keep their own licenses and are downloaded at build time, not included here.

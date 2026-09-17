@@ -100,3 +100,19 @@ Without `--platinum-save` these scenarios are reported as skipped.
   `--platinum-save`.
 - Nothing here measures performance or sound on the real PSP; see `docs/DEVELOPING.md` for the `--dev` build's
   on-card logging.
+
+## Vita port checks
+
+`tests/vita/run.sh` (also `./build-vita.sh check`) is separate from the suite above and needs no ROM,
+no emulator and no PSP toolchain. It compiles and links two translation units against the pinned
+VitaSDK:
+
+- `ds_surface.c` calls every DS interface the Vita platform layer in `port/vita` implements -- the
+  arena, the tick clock, interrupts, threads, alarms, the touch panel and the clock -- and links it.
+  A psp2 or libntr rename after a bump fails here instead of several phases into a build. It defines
+  the DS hardware registers itself, because the real build generates those from the decompilation.
+- `vitagl_features.c` uses the three GPU features the renderer design depends on -- paletted textures,
+  stencil and render-to-texture -- so losing one of them is a failed check rather than a surprise
+  later.
+
+Neither runs; both are contract checks. See [docs/VITA.md](../docs/VITA.md).
