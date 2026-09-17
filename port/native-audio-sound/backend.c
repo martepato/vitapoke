@@ -64,6 +64,7 @@ extern unsigned VitaNativeAudioOutTargetFill(void);
 extern unsigned VitaNativeAudioOutCapacity(void);
 extern void VitaNativeAudioOutStats(unsigned *, unsigned *, unsigned *, unsigned *);
 extern void VitaNativeMemLog(const char *fmt, ...);
+extern void VitaNativeFatal(const char *message);
 #ifdef VITAPOKE_AUDIO_WAV
 extern void VitaNativeAudioDump(const short *interleaved, unsigned frames);
 #endif
@@ -102,16 +103,57 @@ void VitaNativeSoundInit(void){if(initialized)return;SND_ExChannelInit();SND_Seq
 void PXI_InitFifo(void){VitaNativeSoundInit();}
 void PXI_SetFifoRecvCallback(int tag,PXIFifoCallback fn){if(tag!=PXI_FIFO_TAG_SOUND){printf("[AUDIO] unsupported FIFO callback %d\n",tag);abort();}callback=fn;VitaNativeSoundInit();}
 BOOL PXI_IsCallbackReady(int tag,PXIProc proc){return tag==PXI_FIFO_TAG_SOUND&&initialized;}
+/* The ARM7's side of the sound command FIFO. On the DS the other processor reads a linked list of
+ * commands out of shared memory; here it is read in place, on the thread that sent it. The failures
+ * below say what was wrong rather than aborting, because a list that does not terminate is worth
+ * knowing the shape of: the SDK's pool holds at most SND_COMMAND_NUM commands, so anything longer
+ * than that is a cycle.
+ *
+ * ------------------------------------------------------------------ 64-bit DS addresses are signed
+ *
+ * The word carried by this FIFO is a DS address, and on a port the SDK widens it to 64 bits:
+ * snd_command.c sends `(u64)sReserveList`. A cast from a 32-bit pointer to a wider integer goes
+ * through a *signed* intermediate in GCC -- the generated code is literally `asrs r1, r0, #31` -- so
+ * a pointer with its top bit set arrives here as 0xffffffff_8xxxxxxx.
+ *
+ * On the PSP that never happened: user memory was at 0x08800000 and the top bit was always clear. On
+ * the Vita every address has it set, so *every* `(u64)pointer` in this codebase is sign-extended.
+ * Most of it survives because the value is cast straight back to a pointer, which truncates; what
+ * does not survive is anything that range-checks or compares the 64-bit value. This is the first
+ * place that did.
+ *
+ * So the low 32 bits are the address, as they are on the DS, and that is what this uses. Anywhere
+ * else in the port that receives a DS address as 64 bits has to do the same.
+ */
 int PXI_SendWordByFifo(int tag,u64 data,BOOL error){
+ char message[192];
  if(tag!=PXI_FIFO_TAG_SOUND||error){printf("[AUDIO] unsupported FIFO send %d\n",tag);return -1;}
  if(data==SND_MSG_REQUEST_COMMAND_PROC)return 0;
- if(data<4096||data>UINT32_MAX||(data&3))abort();
+ data&=0xffffffffull;
+ if(data<4096||data>UINT32_MAX||(data&3)){
+  snprintf(message,sizeof message,"sound command list at %08llx is not a usable address",(unsigned long long)data);
+  VitaNativeFatal(message);
+ }
  const SNDCommand*p=(const SNDCommand*)(uintptr_t)data;unsigned limit=0;
- while(p){if(++limit>SND_COMMAND_NUM)abort();SNDCommand command=*p;commands++;
+ while(p){
+  if(++limit>SND_COMMAND_NUM){
+   const SNDCommand*q=(const SNDCommand*)(uintptr_t)data;
+   snprintf(message,sizeof message,
+            "sound command list does not end: over %u commands, list %u, head %p id %lu, then %p %p %p, now %p",
+            (unsigned)SND_COMMAND_NUM,lists,(const void*)q,(unsigned long)q->id,(const void*)q->next,
+            (const void*)(q->next?q->next->next:NULL),
+            (const void*)(q->next&&q->next->next?q->next->next->next:NULL),(const void*)p);
+   VitaNativeFatal(message);
+  }
+  SNDCommand command=*p;commands++;
  #include "consumer_switch.inc"
  p=command.next;
  }
- if(!SNDi_SharedWork)abort();SNDi_SharedWork->finishCommandTag++;lists++;return 0;
+ if(!SNDi_SharedWork){
+  snprintf(message,sizeof message,"the sound engine's shared work area was never set (list %u, %u commands)",lists,commands);
+  VitaNativeFatal(message);
+ }
+ SNDi_SharedWork->finishCommandTag++;lists++;return 0;
 }
 void VitaNativeSoundPump(void){
  u64 started=sceKernelGetSystemTimeWide();

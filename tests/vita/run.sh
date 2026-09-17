@@ -66,8 +66,8 @@ check "ds velf" vita-elf-create "$OUT/ds.elf" "$OUT/ds.velf"
 # what the GXM renderer has to reproduce, so a toolchain change that takes one of them away should fail
 # here rather than halfway through writing it.
 check "vitaGL features" arm-vita-eabi-gcc "${CFLAGS[@]}" -std=gnu99 \
-      -o "$OUT/vgl.elf" "$ROOT/tests/vita/vitagl_features.c" "$ROOT/port/vita/shark_stub.c" \
-      -lvitaGL -lmathneon -lSceGxm_stub -lSceCommonDialog_stub -lSceKernelDmacMgr_stub \
+      -o "$OUT/vgl.elf" "$ROOT/tests/vita/vitagl_features.c" "$ROOT/port/vita/shacccg_ext_stub.c" \
+      -lvitaGL -lvitashark -lmathneon -lSceGxm_stub -lSceCommonDialog_stub -lSceKernelDmacMgr_stub \
       -lSceSysmodule_stub -lSceShaccCg_stub_weak -lSceTouch_stub -lstdc++ -lm "${STUBS[@]}"
 check "vitaGL velf" vita-elf-create "$OUT/vgl.elf" "$OUT/vgl.velf"
 

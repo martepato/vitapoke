@@ -310,27 +310,41 @@ actually does, where a GPU version of it is a construction that is nearly right.
 So the GPU's work is: two textures drawn as quads, and rasterising the 3D triangle list that libntr's
 geometry simulator produces. `port/native-vita-render/gpu.h` is that boundary, eight calls wide.
 
-**Not GXM directly, and not for the reason expected.** GXM needs compiled vertex and fragment
-programs, `psp2cgc` is Sony's and not freely distributable, and the only compiler available to a
-homebrew toolchain is `SceShaccCg` -- `libshacccg.suprx`, extracted from a firmware update. The
-earlier plan was to compile shaders on the console through it and cache them, on the argument that
-vendored `.gxp` blobs would be the one part of vitapoke nobody could rebuild. That argument still
-holds. What it missed is testability: **Vita3K does not provide `SceShaccCg`**, so a renderer that
-needs it cannot be run anywhere in this project's own build -- not in the emulator, not in CI, only on
-a console the author has to be holding. For a renderer being written against a DS the author cannot
-single-step, that is the more expensive loss.
+**Not GXM directly, and the shader question is not what it first looked like.** GXM needs compiled
+vertex and fragment programs, `psp2cgc` is Sony's and not freely distributable, and the only compiler
+available to a homebrew toolchain is `SceShaccCg` -- `libshacccg.suprx`, extracted from a firmware
+update. The first version of this note claimed vitaGL avoided that by carrying precompiled shaders
+for its fixed-function pipeline. **That was wrong**, and the way it was found out is instructive: the
+port reached the game's first frame and hung, and vitaGL's last act in the log was opening
+`ux0:data/shader_cache/v31/v/00000028-0.gxp`. vitaGL *writes* its fixed-function shaders as Cg source
+and compiles them on the console through vitaShaRK, caching each variant in that directory. So the
+compiler is needed either way, and `port/vita/shark_stub.c` -- which answered those calls with "no
+compiler" -- was answering a question that had to be answered properly instead.
 
-vitaGL carries precompiled shaders for the fixed-function pipeline, which is all the DS's 3D output
-needs -- textured, vertex-coloured, depth-tested triangles, blended -- so the renderer runs with
-nothing from the firmware and `./build.sh emu-check` can reach it. `tests/vita/vitagl_features.c`
-pins the features it depends on, so a vitaGL that stopped offering one fails the checks rather than
-the game.
+So the renderer needs `libshacccg.suprx` present at runtime. That is a real cost and worth stating
+plainly: it is on most custom-firmware consoles but it is not on a stock one, and it is not in the
+Vita3K emulator unless the user puts it there. `port/native-vita-render/gpu.cpp` brings the compiler
+up itself at startup, before anything is drawn, so that a console without it gets one line saying
+exactly what is missing rather than a crash inside vitaGL's first draw.
+
+What vitaGL still saves, and why it is still the right choice: it writes those shaders, and it owns
+the GXM context, the shader patcher, the memory pools, the render targets and the display queue --
+all of which a GXM renderer would have to have written, for the same runtime dependency. It is a
+thin layer over GXM, `gpu.cpp` is the only file in the port that includes a GL header, and rewriting
+it against GXM later is a contained change.
 
 This is a decision about where the renderer starts, not a ceiling. vitaGL is a thin layer over GXM;
 `gpu.cpp` is the only file in the port that includes a GL header, and rewriting it against GXM is a
 contained change if profiling on hardware asks for one. What it costs today is the shader-level
 control GXM would give -- the DS's paletted textures go to the GPU expanded to 32-bit rather than as
 P4/P8 with a palette, which costs memory and a decode rather than correctness.
+
+**Testing without the compiler.** Everything on the DS side of this renderer -- both 2D engines, the
+frame, the pacing, the game -- needs no GPU at all, and that is the part most likely to be wrong. So
+the renderer has a switch, `NO_GPU=1`, that composes without drawing, and `FRAME_DUMP=<n>` writes
+what was composed to the memory card for `tests/vita/raw_to_png.py`. That pair is how the 2D output
+below was checked against the real game on a machine with no shader compiler in it. A build for
+playing uses neither.
 
 ### What the 3D path does, and what is unverified
 
@@ -434,38 +448,52 @@ bound and has no Vita counterpart — that check simply goes away, along with th
 - `sceKernelWaitThreadEnd` gained an exit-status argument on psp2, and `sceKernelCreateCallback` has a
   different signature entirely. Both are wrapped. The compat header self-test is what found them.
 
-## Booting it
+## Booting it, and running it
 
 `./build.sh boot` installs the built VPK into Vita3K, runs it, and prints what the port wrote to
 `ux0:data/vitapoke/log.txt`. It is the first thing to run after a build, and it is how everything
-below was found.
+below was found. With `--rom your-dump.nds` it uses a real ROM; without one,
+`tests/vita/make_probe_rom.py` writes a file shaped like a DS ROM -- a header, an overlay table, empty
+file tables, no game data -- which is enough to test everything up to the game's first data read.
 
-A ROM cannot be in this repository, and most of what happens before the game's first frame does not
-need one -- it needs a file shaped like a DS ROM. `tests/vita/make_probe_rom.py` writes that: a
-header, an overlay table with one record per module, and empty file tables. No code, no graphics, no
-text, nothing from a cartridge. With it, this is how far the port gets:
+**With a real ROM, the game runs.** In Vita3K, built with `NO_GPU=1 FRAME_DUMP=20` (see the renderer
+section for why), it gets through its own startup, loads its overlays, and plays the opening: the
+copyright screen, the GAME FREAK logo, the Pokémon logo, in colour, both screens, composed by this
+port's software 2D renderer from the real ROM. About a thousand frames were run and dumped to check
+it. That is the answer to the question the whole port exists to ask.
 
 ```
 [APP] vitapoke starting: data in ux0:data/vitapoke
-[STACK] stack=0x80046000 size=1048576 sp=80145f68
 [RENDER] ready: software 2D, two 256x192 panels at 2x on a 960x544 display
-[MEM] frame init frame=0 stack=8352/1048576 heap_used=31024 heap_high=31024 heap_arena=32768 gpu=720896 B
 [APP] entering NitroMain
 [STARTUP] OS arena initialised, 6 MiB in main backing
-[STARTUP] CARD cache thresholds 1280/9216; synchronous stdio backend
-[FATAL] game assertion at 0x810b15eb          <- NARC_ReadFromMember + 0x53
+[AUDIO] output ready: 16000 Hz, 256-sample buffers, 8192-sample ring
+[AUDIO] init output=ready sound=on
+[OVERLAY] load id=77
+[MEM] enter gOpeningCutsceneAppTemplate frame=0 ... files_open=5/5 open_fail=0 read_fail=0
+[FRAME] 1 game_us=0 audio_us=2635 render_us=8949 bind_us=3277 compose_us=2966 present_us=105
+[FRAME] 10 game_us=272599 audio_us=10791 render_us=39831 bind_us=22 compose_us=9045 present_us=1
 ```
 
-Which is: the module loads, the platform layer comes up, the GPU comes up, the DS arena, the tick
-clock, the interrupt table and the vertical blank are all in place, the ROM's overlay table is read
-and matches what the build expects, the file system opens the ROM, the cartridge header is copied
-where the game looks for it, the heap and the four task managers are built, and the game's own
-`InitSystem` runs to its last line. Then the game reads its first data file, there is nothing there,
-and it gives up -- correctly.
+So: the module loads, the platform layer comes up, the DS arena, the tick clock, the interrupt table
+and the vertical blank are in place, the ROM's overlay table matches what the build expects, the file
+system serves the game's files, the heaps and task managers are built, the sound engine's output port
+opens, the overlay loader re-initialises a module's data, and the game's own scenes run.
 
-**Everything before the game's data now works. Nothing after it has been tried.** The renderer has
-never composed a real frame, the sound engine has never had a sample to mix, and no button has ever
-been pressed.
+What the numbers say, remembering that they are an emulator's: about 30 ms of game code per frame and
+under 10 ms of compositing, with the frame caches skipping most frames' 2D work entirely (`compose_us`
+is 1 µs on the frames they hit). The emulator itself runs at roughly a sixth of real time, so nothing
+here is a frame rate for the console -- only hardware can give that.
+
+**What has still never run:** the GPU. `NO_GPU=1` is how the above was checked, because Vita3K has no
+shader compiler unless the user puts `libshacccg.suprx` into it, and without a compiler vitaGL cannot
+make its fixed-function shaders (see the renderer section). So the panel present, the 3D rasteriser
+and the audio actually reaching a speaker are all still unverified. Nor has any button been pressed:
+nothing here drives the pad, so the game plays its opening and waits.
+
+Two things to look at first when it does run on a console: the dark red bands at the outer edges of
+both panels in some scenes, which may be the cutscene's own backdrop or a background's horizontal
+wrap, and the 3D depth convention in `G3SIM_AddVtx`.
 
 ### Six things that cost an afternoon each
 
@@ -527,6 +555,8 @@ repeatably, in the project's own build.
 | On-screen keyboard | Not needed: the game's own naming screen is used, because the Vita has a touchscreen |
 | MIPS inline assembly | Done: `mov %0, sp` and `dmb ish`, guarded on `__arm__` |
 | Runtime checks in the Vita3K emulator | Done (`./build.sh emu-check`) |
-| Does it boot? | Yes, in Vita3K: through the game's own `InitSystem` and into `NitroMain` (`./build.sh boot`) |
-| Does it play? | **Unknown.** No real game data has been through it: no frame composed, no sound mixed, no button pressed |
+| Does it boot? | Yes, in Vita3K, from a real ROM: through the game's own startup and into its opening |
+| Does the DS 2D renderer work? | Yes: the copyright screen, the GAME FREAK logo and the Pokémon logo, in colour, both screens |
+| Does the GPU path work? | **Unknown.** It needs `libshacccg.suprx`, which the emulator here does not have |
+| Does it play? | **Unknown.** No button has been pressed, no sound heard, no 3D drawn |
 | SoulSilver | Not started: its sources are here, only Platinum has a build driver |

@@ -16,6 +16,16 @@ CFLAGS = -O2 @TARGETCC@ -DSDL_MAIN_HANDLED -DSDK_PORT -DSDK_X86 -D@SDKBUILD@ -DS
 # -fpermissive: the melonDS and libntr simulator sources are C++ that a modern GCC is stricter about
 # than the compiler they were written for. -fno-rtti and -fno-exceptions because nothing here uses
 # either and they cost code size.
+# TEST ONLY: NO_GPU=1 composes the DS screens without drawing them, for checking the DS side of the
+# renderer where the console's shader compiler is not available (see gpu.cpp).
+ifneq ($(NO_GPU),)
+CFLAGS += -DVITAPOKE_NO_GPU
+endif
+# TEST ONLY: FRAME_DUMP=<n> writes the composed DS screens to the memory card every n frames (and
+# FRAME_DUMP_LAST=<frame> stops), for tests/vita/raw_to_png.py. 384 KB a frame; never in a release.
+ifneq ($(FRAME_DUMP),)
+CFLAGS += -DVITAPOKE_FRAME_DUMP=$(FRAME_DUMP) -DVITAPOKE_FRAME_DUMP_LAST=$(or $(FRAME_DUMP_LAST),600)
+endif
 CXXFLAGS = $(CFLAGS) -std=gnu++17 -fno-exceptions -fno-rtti -fpermissive
 LIBS = -lvitaGL -lmathneon -lstdc++ -lm
 # CXXFLAGS is deliberately set before the include: @BUILDMAK@ folds INCDIR into it.

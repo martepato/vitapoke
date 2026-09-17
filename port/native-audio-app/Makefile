@@ -13,7 +13,7 @@ TITLE_ID = VPOK00001
 TITLE = vitapoke (Pokemon Platinum)
 
 # The application's own glue.
-OBJS = app_main.o config.o frame.o overlay.o romfs.o scene_log.o shark_stub.o
+OBJS = app_main.o config.o frame.o overlay.o romfs.o scene_log.o shacccg_ext_stub.o
 # The DS platform layer, on psp2 (port/vita).
 OBJS += os_core.o os_thread.o os_alarm.o os_sync.o input.o sdl_sync.o cadence.o owner_info.o \
         backup.o memlog.o audio_out.o
@@ -37,10 +37,10 @@ CFLAGS += $(EXTRA_CFLAGS)
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti
 
 RENDER_LIB ?= ../native-vita-render/libnative-render-vita.a
-# The psp2 modules the port calls, and vitaGL's. SceShaccCg is linked weakly on purpose: vitaGL only
-# needs it to compile shaders at runtime, which this renderer never asks it to do, and a weak stub
-# means the application still loads on a console that does not have the module installed.
-STUBS = -lvitaGL -lmathneon -lSceGxm_stub -lSceDisplay_stub -lSceCtrl_stub -lSceTouch_stub \
+# The psp2 modules the port calls, and vitaGL's. SceShaccCg is linked weakly on purpose: it lives in
+# libshacccg.suprx, which the renderer loads at startup, so a console without it still loads the
+# application -- and gets the message the renderer writes instead of a failure to start.
+STUBS = -lvitaGL -lvitashark -lmathneon -lSceGxm_stub -lSceDisplay_stub -lSceCtrl_stub -lSceTouch_stub \
         -lSceRtc_stub -lScePower_stub -lSceAudio_stub -lSceCommonDialog_stub \
         -lSceKernelDmacMgr_stub -lSceSysmodule_stub -lSceAppMgr_stub -lSceShaccCg_stub_weak \
         -lSceLibKernel_stub -lstdc++ -lm
@@ -112,10 +112,8 @@ memlog.o: $(VITA)/memlog.c
 	$(CC) $(CFLAGS) -c $< -o $@
 audio_out.o: $(VITA)/audio_out.c
 	$(CC) $(CFLAGS) -c $< -o $@
-# vitaGL can compile GLSL at runtime through vitaShaRK, which needs Sony's shader compiler module.
-# This renderer never asks it to, so the handful of entry points are answered here and the module is
-# not a dependency of the application.
-shark_stub.o: $(VITA)/shark_stub.c
+# The one SceShaccCg import VitaSDK has no stub for; see port/vita/shacccg_ext.h.
+shacccg_ext_stub.o: $(VITA)/shacccg_ext_stub.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # ---------------------------------------------------------------- the rest

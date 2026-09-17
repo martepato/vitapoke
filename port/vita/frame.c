@@ -43,6 +43,9 @@ extern void VitaNativeMemPoll(void);
  * renderer or the sound backend already keeps, so a frame costs a few additions. */
 #define REPORT_FRAMES 600
 
+/* How many frames get a line of their own at startup. */
+#define FIRST_FRAMES 10
+
 static unsigned frames;
 static unsigned long long frameStart, lastComplete;
 static unsigned long long gameUs, audioUs, renderUs, idleUs;
@@ -121,6 +124,16 @@ void VitaNativeFrameComplete(void)
 	}
 	renderUs += VitaOS_Now() - afterAudio;
 	frames++;
+
+	/* The first frames, one line each. A port that reaches the game's first scene and then appears
+	 * to stop is either slow or stuck, and the only way to tell from a log is to have the first few
+	 * frames in it with their timings. Cheap: it stops after FIRST_FRAMES. */
+	if (frames <= FIRST_FRAMES) {
+		VitaNativeMemLog("[FRAME] %u game_us=%llu audio_us=%llu render_us=%llu "
+		                 "bind_us=%u compose_us=%u present_us=%u polygons=%u",
+		                 frames, gameUs, audioUs, renderUs, RenderStage(0), RenderStage(1),
+		                 RenderStage(2), VitaNativeG3Polygons());
+	}
 
 	if (frames % 10 == 0)
 		VitaNativeMemPoll();

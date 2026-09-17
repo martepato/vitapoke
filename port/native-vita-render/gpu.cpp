@@ -2,17 +2,20 @@
  *
  * The only file in the port that includes a GL header; see gpu.h for why that is worth arranging.
  *
- * vitaGL rather than GXM directly, and the reason is worth recording. GXM requires the application
- * to supply compiled shaders, and the only shader compiler available to a homebrew toolchain is
- * Sony's SceShaccCg, which is not part of VitaSDK: it is a module dumped from a console, and it is
- * not present in the Vita3K emulator either. Depending on it would make the renderer impossible to
- * test anywhere but on hardware, and impossible to test at all in this project's own build. vitaGL
- * carries precompiled shaders for the fixed-function pipeline, which is all the DS needs -- textured,
- * vertex-coloured, depth-tested triangles, and two quads for the panels -- so the renderer runs
- * without it. tests/vita/vitagl_features.c pins the features this depends on, so a vitaGL that
- * stopped providing one of them fails the checks rather than the game.
+ * vitaGL rather than GXM directly, and what that does and does not save. GXM will not draw without
+ * compiled vertex and fragment programs, and the only compiler available to a homebrew toolchain is
+ * Sony's SceShaccCg -- libshacccg.suprx, extracted from a firmware update. vitaGL does not avoid
+ * that: it writes the shaders for its fixed-function pipeline as Cg source and compiles them on the
+ * console through vitaShaRK, caching each one in ux0:data/shader_cache. So the renderer needs the
+ * compiler present either way.
+ *
+ * What vitaGL saves is writing those shaders, the GXM context, the shader patcher, the memory pools,
+ * the render targets and the display queue -- and it is testable, because Vita3K implements
+ * SceShaccCg itself. tests/vita/vitagl_features.c pins the features this depends on, so a vitaGL
+ * that stopped providing one of them fails the checks rather than the game.
  */
 #include <vitaGL.h>
+#include <vitashark.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -46,10 +49,24 @@ void VitaGpuSetPolygonState(int cull, int depthCompare)
 	polygonDepth = depthCompare;
 }
 
+/* VITAPOKE_NO_GPU: compose, but do not draw.
+ *
+ * The renderer needs the console's shader compiler (see the note above), and an emulator only has it
+ * if the user has put libshacccg.suprx in it. Everything on the DS side of this renderer -- the two 2D
+ * engines, the frame, the pacing, the game itself -- does not. This switch lets all of that run and be
+ * checked, with FRAME_DUMP writing out what was composed, on a machine that cannot present it.
+ *
+ * It is for testing and says so in the log. A build for playing does not use it: a player with no
+ * shader compiler is better served by the message the renderer prints than by a black screen.
+ */
 int VitaGpuInit(void)
 {
 	if (ready)
 		return 0;
+#ifdef VITAPOKE_NO_GPU
+	VitaNativeMemLog("[GPU] built with VITAPOKE_NO_GPU: the DS screens are composed and not drawn");
+	return 0;
+#endif
 	/* vitaGL's pool for immediate-mode geometry. This renderer sends two quads and one triangle
 	 * list a frame through it, so it is small on purpose; the textures are allocated separately.
 	 *
@@ -68,6 +85,21 @@ int VitaGpuInit(void)
 	 * frame would look wrong while it did. So the present does not wait, and the game keeps its
 	 * pacing. */
 	vglWaitVblankStart(GL_FALSE);
+
+	/* The shader compiler, brought up here rather than left to vitaGL, for two reasons. It is the
+	 * one thing this renderer needs from the console that a console might not have, so a missing
+	 * libshacccg.suprx should be a line in the log and a clean exit rather than a crash inside
+	 * vitaGL's first draw. And shark_init_simple is the right entry point -- vitaShaRK's own path
+	 * for this -- because the extension calls that shark_init makes are not available here (see
+	 * port/vita/shacccg_ext.h); initialising it now means vitaGL's own later attempt is a no-op.
+	 *
+	 * Both paths vitaGL would try are tried, in its order. */
+	if (shark_init_simple(NULL) < 0 && shark_init_simple("ur0:data/external/libshacccg.suprx") < 0) {
+		VitaNativeMemLog("[GPU] the shader compiler is not installed: vitapoke needs "
+		                 "libshacccg.suprx at ur0:data/libshacccg.suprx. Nothing can be drawn "
+		                 "without it.");
+		return -1;
+	}
 
 	glGenTextures(2, panel);
 	for (unsigned i = 0; i < 2; i++) {

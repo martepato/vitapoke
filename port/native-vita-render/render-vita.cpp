@@ -48,6 +48,12 @@
 #include <cstdio>
 #include <cstring>
 
+#ifdef VITAPOKE_FRAME_DUMP
+#ifndef VITAPOKE_FRAME_DUMP_LAST
+#define VITAPOKE_FRAME_DUMP_LAST 600
+#endif
+#endif
+
 extern "C" void VitaNativeMemLog(const char *, ...);
 extern "C" void VitaNativeFatal(const char *);
 extern "C" unsigned long long VitaOS_Now(void);
@@ -271,6 +277,30 @@ static int Present()
 	lastDraw = (drawA ? 1u : 0u) | (drawB ? 2u : 0u);
 	drawUs = (unsigned)(VitaOS_Now() - phase);
 	last2DUs = bindUs + drawUs;
+
+#ifdef VITAPOKE_FRAME_DUMP
+	/* Verification builds only. The composed screens, as they are, written to the memory card: the
+	 * one way to see what this renderer produced without watching the console. Both panels go into
+	 * one file, 256x192 each, R,G,B,A bytes, top screen first; tests/vita/raw_to_png.py turns them
+	 * into pictures. VITAPOKE_FRAME_DUMP is the interval in frames, and VITAPOKE_FRAME_DUMP_LAST the
+	 * frame to stop at, because a card fills up quickly at 384 KB a frame. */
+	if (frames % (VITAPOKE_FRAME_DUMP) == 0 && frames <= (VITAPOKE_FRAME_DUMP_LAST)) {
+		char path[80];
+		FILE *out;
+
+		snprintf(path, sizeof path, VITAPOKE_DATA_DIR "/frame%05u.raw", frames);
+		out = fopen(path, "wb");
+		if (out) {
+			/* Row by row, because the buffer's stride is 256 pixels and only 192 rows are used. */
+			for (unsigned e = 0; e < 2; e++) {
+				unsigned engine = (power & 0x8000) ? e : 1 - e;
+				for (unsigned row = 0; row < VITAPOKE_DS_H; row++)
+					fwrite(raw[engine] + row * 256, 4, VITAPOKE_DS_W, out);
+			}
+			fclose(out);
+		}
+	}
+#endif
 
 	phase = VitaOS_Now();
 	for (unsigned e = 0; e < 2; e++)

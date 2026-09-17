@@ -12,7 +12,14 @@
 #
 #   tests/vita/boot.sh                     boot with whatever is on the card
 #   tests/vita/boot.sh --rom FILE          copy FILE in as the ROM first
+#   tests/vita/boot.sh --shacccg FILE      copy in libshacccg.suprx, which the renderer needs
 #   tests/vita/boot.sh --seconds 60        wait longer than the default 45
+#
+# Without libshacccg.suprx the renderer stops at startup and says so: vitaGL compiles its shaders on
+# the console and there is no compiler in a stock emulator. Everything on the DS side of the renderer
+# can still be checked without one -- build it with NO_GPU=1 and FRAME_DUMP=<n> (see
+# port/native-vita-render/gpu.cpp) and the composed screens land on the card for
+# tests/vita/raw_to_png.py.
 #
 # Vita3K is not a console: its timing, its scheduling and its GPU are approximations, and its touch
 # panel is a mouse. A clean boot here is not proof that a Vita boots it. A crash here is still worth
@@ -26,10 +33,12 @@ TITLE_ID=VPOK00001
 APP="$ROOT/.work/vita/test_out/native-audio-app"
 SECONDS_TO_WAIT=45
 ROM=""
+SHACCCG=""
 while [ $# -gt 0 ]; do case "$1" in
   --rom) ROM="$2"; shift 2;;
+  --shacccg) SHACCCG="$2"; shift 2;;
   --seconds) SECONDS_TO_WAIT="$2"; shift 2;;
-  *) die "usage: tests/vita/boot.sh [--rom FILE] [--seconds N]";;
+  *) die "usage: tests/vita/boot.sh [--rom FILE] [--shacccg libshacccg.suprx] [--seconds N]";;
 esac; done
 
 [ -f "$APP/eboot.bin" ] || die "no build to boot. Run: ./build.sh game"
@@ -48,6 +57,13 @@ if [ -n "$ROM" ]; then
   cp -f "$ROM" "$DATA/Platinum.nds"
   # The port will not create a save and will not touch one that is the wrong size.
   [ -f "$DATA/Platinum.sav" ] || python3 "$ROOT/scripts/make_save.py" "$DATA/Platinum.sav"
+fi
+
+if [ -n "$SHACCCG" ]; then
+  [ -f "$SHACCCG" ] || die "not found: $SHACCCG"
+  mkdir -p "$PREF/ur0/data"
+  cp -f "$SHACCCG" "$PREF/ur0/data/libshacccg.suprx"
+  log "Installed the shader compiler into the emulator"
 fi
 
 log "Booting vitapoke in Vita3K (up to ${SECONDS_TO_WAIT}s)"

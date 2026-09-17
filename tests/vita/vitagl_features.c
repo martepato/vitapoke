@@ -18,6 +18,9 @@
 #include <vitaGL.h>
 #include <psp2/kernel/processmgr.h>
 #include <string.h>
+
+/* The port's log, which shacccg_ext_stub.c writes to. Nothing here runs, so this only has to link. */
+void VitaNativeMemLog(const char *fmt, ...) { (void)fmt; }
 static unsigned char atlas[128*512];
 static unsigned short clut[256];
 int main(void) {

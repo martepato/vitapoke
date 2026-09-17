@@ -5,12 +5,13 @@
 Pokémon Platinum and SoulSilver compiled to run **natively on a PS Vita**. Not an emulator: the game's own
 code is built for the Vita's ARM CPU and linked into a Vita application.
 
-> **It boots, and it does not play yet.** This is a port in progress, not something you can play.
-> The whole build works and produces a VPK, and in the Vita3K emulator that VPK starts: the platform
-> layer comes up, the GPU comes up, and the game's own startup runs to completion and into
-> `NitroMain`. What has not happened is a frame of the actual game -- nothing has been drawn, nothing
-> has been heard, no button has been pressed. See [docs/VITA.md](docs/VITA.md) for exactly what is
-> known and what is not.
+> **It runs, and it is not playable yet.** This is a port in progress. The whole build works and
+> produces a VPK, and in the Vita3K emulator that VPK runs a real ROM: the game's startup, its
+> overlays, and its opening -- the copyright screen, the GAME FREAK logo, the Pokémon logo, in colour,
+> both screens -- all composed by this port's own renderer. What has *not* been tried is the GPU path
+> (it needs `libshacccg.suprx`, which that emulator does not have), the 3D, sound coming out of a
+> speaker, and any button press at all. See [docs/VITA.md](docs/VITA.md) for exactly what is known
+> and what is not.
 >
 > vitapoke started as a port of [pspoke](https://github.com/IbrahimIrfan/pspoke), which does the same
 > thing for the PSP and is playable today. If you want to play rather than build, use that.
@@ -44,8 +45,10 @@ code is built for the Vita's ARM CPU and linked into a Vita application.
 | Renderer: DS 3D rasterised on the GPU | Written; unverified |
 | Audio: the DS mixer through `sceAudioOut` | Written; not yet heard |
 | Link step: overlay layout, VPK packaging | Works |
-| Boots | Works: through the game's own startup, in the Vita3K emulator |
-| Plays | **Unknown**: no real game data has been through it yet |
+| Boots and runs the game's opening from a real ROM | Works, in the Vita3K emulator |
+| DS 2D renderer, against the real game | Works: text, sprites, palettes, both screens |
+| GPU path (presenting, and the DS's 3D) | Untested: needs `libshacccg.suprx` |
+| Playable | **No**: no input has been tried, and nothing has run on hardware |
 | SoulSilver build driver | Not written (its sources are here; only Platinum has a driver) |
 
 Only Platinum and SoulSilver, US releases, as in pspoke. Wi-Fi, DS wireless and microphone features are
@@ -60,6 +63,12 @@ not ported and are not planned.
 You don't need to install VitaSDK or any libraries yourself. The build downloads a pinned
 [VitaSDK](https://vitasdk.org) snapshot (about 100 MB) into the project folder the first time, and builds
 its GPU dependencies there too.
+
+On the console you also need **`libshacccg.suprx`** at `ur0:data/libshacccg.suprx`. It is Sony's
+shader compiler, taken from a firmware update, and most custom-firmware setups already have it: the
+renderer's shaders are compiled on the console, because there is no way to build them beforehand
+without that compiler. If it is missing, vitapoke says so in its log and stops rather than showing a
+black screen.
 
 A Vita is not needed to work on this, and is not enough to test it: see
 [Testing](#testing).
