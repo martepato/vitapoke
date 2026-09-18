@@ -58,6 +58,10 @@
 #define VITAPOKE_DATA_DIR  "ux0:data/vitapoke"
 #define VITAPOKE_LOG_PATH  VITAPOKE_DATA_DIR "/log.txt"
 #define VITAPOKE_ROM_PATH  VITAPOKE_DATA_DIR "/Platinum.nds"
+/* Written beside the executable by a build that unpacked a ROM into the VPK (see
+ * scripts/extract_assets.py). Its presence is what tells the port the data is already here. app0:
+ * is the application's own directory, and read only, which is all the game's data needs. */
+#define VITAPOKE_ASSET_INDEX "app0:nitrofs.idx"
 #define VITAPOKE_SAVE_PATH VITAPOKE_DATA_DIR "/Platinum.sav"
 
 #endif /* VITAPOKE_H */

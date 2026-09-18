@@ -64,8 +64,17 @@ eboot.bin: $(TARGET).elf
 param.sfo:
 	$(VITA_MKSFOEX) -s TITLE_ID=$(TITLE_ID) "$(TITLE)" $@
 
+# ASSET_DIR: a directory whose whole contents go into the VPK beside the executable -- the game's
+# data, unpacked from a ROM at build time by scripts/extract_assets.py. Empty means a VPK with no
+# game data in it, which reads a ROM from the memory card instead. vita-pack-vpk takes one -a
+# source=destination per file, so the list is built here; for Platinum that is 341 of them.
+ifneq ($(ASSET_DIR),)
+VPK_ASSET_LIST := $(shell cd $(ASSET_DIR) && find . -type f ! -name .stamp | sed 's|^\./||')
+VPK_ASSETS := $(foreach f,$(VPK_ASSET_LIST),-a $(ASSET_DIR)/$(f)=$(f))
+endif
+
 $(TARGET).vpk: eboot.bin param.sfo
-	$(VITA_PACK_VPK) -s param.sfo -b eboot.bin $@
+	$(VITA_PACK_VPK) -s param.sfo -b eboot.bin $(VPK_ASSETS) $@
 
 clean:
 	rm -f $(OBJS) $(TARGET).elf $(TARGET).velf $(TARGET).vpk eboot.bin param.sfo

@@ -23,7 +23,26 @@ set -o pipefail
 
 [ -x "${TOOLBIN}gcc" ] || die "VitaSDK not installed. Run: ./build.sh setup"
 
-[ $# -eq 0 ] || die "unknown option $1"
+# Where the game's data comes from.
+#
+# A ROM at roms/Platinum.nds is used without being asked for -- that directory exists for exactly
+# this, is in .gitignore, and is where `./build.sh game` looks every time. --rom FILE overrides it.
+# With neither, the build produces a VPK with no game data in it, which reads the ROM from the
+# memory card at run time instead; that is what keeps a clone buildable, and the checks and CI
+# runnable, by somebody who has no dump at all.
+ROM=""
+while [ $# -gt 0 ]; do case "$1" in
+  --rom) ROM="$2"; shift 2;;
+  *) die "usage: scripts/game.sh [--rom FILE]";;
+esac; done
+if [ -z "$ROM" ] && [ -f "$ROOT/roms/Platinum.nds" ]; then
+  ROM="$ROOT/roms/Platinum.nds"
+  log "Using the ROM in roms/ (pass --rom FILE to use another, or remove it to build without)"
+fi
+if [ -n "$ROM" ]; then
+  [ -f "$ROM" ] || die "no such file: $ROM"
+  ROM="$(cd "$(dirname "$ROM")" && pwd)/$(basename "$ROM")"
+fi
 
 WORK="$ROOT/.work/vita"; T="$WORK/test_out"; LOGS="$WORK/logs"; U="$CACHE/upstream"
 mkdir -p "$LOGS"
@@ -138,9 +157,33 @@ step ov-link      bash -c "cd '$O' && python3 gen-link.py"
 log "Building the renderer"
 step renderer     make -C "$T/native-vita-render" libnative-render-vita.a
 
+# The game's data, unpacked from the ROM into files the game can open by name. Redone whenever the
+# ROM changes, and skipped entirely when there is none.
+ASSETS=""
+if [ -n "$ROM" ]; then
+  ASSETS="$WORK/assets"
+  if [ ! -f "$ASSETS/.stamp" ] || [ "$(cat "$ASSETS/.stamp" 2>/dev/null)" != "$ROM $(sha1 "$ROM")" ]; then
+    log "Unpacking the ROM's file system for the VPK"
+    rm -rf "$ASSETS"; mkdir -p "$ASSETS"
+    python3 "$ROOT/scripts/extract_assets.py" "$ROM" "$ASSETS" || die "could not unpack $ROM"
+    printf '%s' "$ROM $(sha1 "$ROM")" > "$ASSETS/.stamp"
+  else
+    echo "    the ROM's file system is already unpacked"
+  fi
+fi
+
 log "Linking the application"
 A="$T/native-audio-app"
-step link         make -C "$A" vitapoke-platinum.vpk
+# Removed first so the VPK is always repacked: whether the assets are in it is an argument rather
+# than a file make can compare timestamps against, and a stale VPK from the other choice would be
+# indistinguishable from a fresh one.
+rm -f "$A/vitapoke-platinum.vpk"
+step link         make -C "$A" vitapoke-platinum.vpk ASSET_DIR="$ASSETS"
 OUT="$ROOT/dist"; mkdir -p "$OUT"
 cp -f "$A/vitapoke-platinum.vpk" "$OUT/vitapoke-platinum.vpk"
-log "Done: dist/vitapoke-platinum.vpk"
+if [ -n "$ASSETS" ]; then
+  log "Done: dist/vitapoke-platinum.vpk ($(du -h "$OUT/vitapoke-platinum.vpk" | cut -f1)), with the game's data in it"
+  log "That VPK contains the game. It is yours to keep, and not to share."
+else
+  log "Done: dist/vitapoke-platinum.vpk (no game data; it reads a ROM from ux0:data/vitapoke)"
+fi

@@ -68,7 +68,10 @@ esac; done
 
 LOGS="$WORK"
 vita3k_prepare
-vita3k_install "$TITLE_ID" "$APP/eboot.bin" "$APP/param.sfo"
+# The assets the build unpacked, if it did: the same directory the VPK would carry.
+ASSETS="$ROOT/.work/vita/assets"
+[ -f "$ASSETS/nitrofs.idx" ] || ASSETS=""
+vita3k_install "$TITLE_ID" "$APP/eboot.bin" "$APP/param.sfo" "$ASSETS"
 
 DATA="$PREF/ux0/data/vitapoke"
 mkdir -p "$DATA"

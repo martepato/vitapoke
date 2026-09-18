@@ -387,6 +387,63 @@ One thing the runs did settle: the game asks for far more texture *binds* than d
 roughly two thousand binds per sixty frames in the cutscene -- so the cache being a cache, rather than
 a decode per bind, matters. Its hit counter is the number to watch on the first hardware run.
 
+## The game's data: unpacked at build time, not read from a ROM
+
+The game asks its file system for data by name and only by name. Eleven direct `FS_OpenFile` calls,
+and all 2621 `NARC_*` calls in the game through one table of paths in `narc.c` -- no file ids, no
+directory walks, no raw ranges. That one fact decides the design: if the data is files with those
+names, nothing else about the game has to change.
+
+So `./build.sh game` unpacks it. `scripts/extract_assets.py` reads a ROM's own file system and
+writes out its 340 files at their own paths (95.5 MB for Platinum), plus `nitrofs.idx`, 14 KB
+holding the three things the port needs from a ROM that are not files in it: the 512-byte cartridge
+header (`CheckForMemoryTampering` reads the maker code, and `CARD_Init` copies the header into the
+hardware buffers the game looks in), the ARM9 overlay table (122 modules of metadata the game reads
+back but never dereferences), and every file's path by file id. Those go into the VPK beside the
+executable, and the port opens them from `app0:`. None of the ROM's code is carried: every overlay's
+code is already compiled into the executable, which is what the rest of this document is about.
+
+A ROM at `roms/Platinum.nds` is used automatically, `--rom FILE` points elsewhere, and **a build
+with no ROM still works** -- the VPK then has no game data in it and reads one from
+`ux0:data/vitapoke` at run time, which is what this port did before and what keeps a clone
+buildable, and the checks runnable, by somebody who has no dump. `port/native-audio-app/services/romfs.c`
+serves both and says which in the log.
+
+### Why this is not simply the ROM in the VPK
+
+Because the ROM carries a second copy of the code. The executable already contains every overlay's
+ARM code, compiled for this console; the ROM's copy would be 30 MB of ARM946 instructions that
+nothing will ever execute. Unpacking drops them, and a 53 MB VPK is the result rather than a 128 MB
+one. It is also the honest shape: the port is a native program with its data beside it, not an
+emulator with an image.
+
+### The handle pool, and the bug it exists to avoid
+
+The version of `romfs.c` this replaces served every DS file from **one** open handle, and the
+comment above it records why: a console has a small, hard limit on how many files may be open on its
+memory card at once, and past it `fopen` fails and the caller gets a file it believes is valid. The
+PSP build found that on hardware, in the field map, which opens more archives at once than any other
+scene. One handle, and every `FSFile` seeking before it read, was how that was avoided.
+
+Bundled files cannot share a handle, because they are different files. So the bound is kept
+deliberately instead: at most eight host handles are open whatever the game does, keyed by file id,
+the least recently read is closed to make room, and every read still seeks first because the handle
+under it may have been reopened for somebody else since. The 512 KB absolute-offset block cache that
+the ROM path uses is not needed here -- it existed to make the repeated 2-4 byte NARC header reads
+cheap, and a per-file handle with newlib's own buffer in front of it does that.
+
+The counters are in the `[MEM]` line so this is measured rather than assumed. Through startup, the
+opening, the title screen and into a new game -- 10,200 frames:
+
+```
+files_open=5/7 open_fail=0 read_fail=0 handles=8 evicted=13 handle_fail=0
+```
+
+Eight handles held, thirteen evictions in five and a half minutes, and nothing ever failed to open.
+The game's working set is a little above eight at a scene change and flat otherwise. `evicted`
+climbing steeply in the field map would be the sign to raise the pool; `handle_fail` above zero
+would mean the console's limit was hit anyway, which is the failure this is shaped to prevent.
+
 ## Audio
 
 `sceSasCore`, the PSP's hardware voice mixer, is what the PSP build handed the DS's 16 channels to, so
@@ -718,7 +775,7 @@ repeatably, in the project's own build.
 | Audio: the DS mixer's output through `sceAudioOut` | Working: 500k samples accepted, peak 21912/32767, 15 channels -- real audio from the ROM, not yet heard through a speaker |
 | Overlay data layout and the link | Done (`overlays/gen-link.py`, `INSERT AFTER .data`) |
 | VPK packaging | Done, and wired into `./build.sh game` |
-| No ROM needed to build | Done: the overlay table is read from the ROM at startup |
+| The game's data | Unpacked from a ROM at build time and packed into the VPK (`scripts/extract_assets.py`, `roms/`), so the console needs nothing else; a build with no ROM still works and reads one from the memory card |
 | Screen layout: both DS screens side by side, 480x360 each | Done (`port/vita/include/vitapoke.h`, honoured by the renderer and by touch); exactly the DS's 4:3, nothing cropped, nothing overlapping |
 | Touch input | Done: `TP_*` reads the front panel through `sceTouch`, no cursor and no stylus mode |
 | Buttons | Done, and verified on the running game: `SCE_CTRL_START` reaches the DS START bit (`./build.sh boot --press`) |

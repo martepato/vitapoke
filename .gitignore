@@ -3,6 +3,9 @@
 .cache/
 dist/
 *.nds
+# Your own dump, if you keep it here for the build to unpack (see roms/README.md).
+roms/*
+!roms/README.md
 *.sav
 *.o
 *.a

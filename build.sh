@@ -8,6 +8,7 @@
 #   ./build.sh emu-check run the platform layer's runtime checks in the Vita3K emulator
 #   ./build.sh boot      boot the built game in the Vita3K emulator and print its log
 #   ./build.sh game      build the game and link the VPK (scripts/game.sh)
+#                        a ROM at roms/Platinum.nds is unpacked into the VPK; --rom FILE overrides
 #   ./build.sh clean     remove the Vita build output (downloads in .cache are kept)
 #
 # `game` does the whole build: the DS SDK replacement, all 1016 of the game's own C files, the Vita
@@ -17,9 +18,9 @@
 source "$(dirname "$0")/scripts/common.sh"
 
 CMD="${1:-}"; shift || true
-# Only `boot` takes arguments of its own (--rom, --seconds).
+# `boot` takes its own arguments (--rom, --seconds, --press, --shot), and `game` takes --rom.
 case "$CMD" in
-  boot) ;;
+  boot|game) ;;
   *) [ $# -eq 0 ] || die "unknown option $1";;
 esac
 
@@ -52,7 +53,7 @@ the pinned toolchain the build downloads."
     }
     case "$CMD" in
       check)     exec bash "$ROOT/tests/vita/run.sh";;
-      game)      exec bash "$ROOT/scripts/game.sh";;
+      game)      exec bash "$ROOT/scripts/game.sh" "$@";;
       emu-check) exec bash "$ROOT/tests/vita/vita3k.sh";;
     esac
     ;;

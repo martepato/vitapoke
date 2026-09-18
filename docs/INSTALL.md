@@ -14,6 +14,12 @@ tools, which include all of them. To install them yourself instead:
 `./build.sh setup` needs only git, make, curl and tar; the extra tools are for building a game.
 `./build.sh emu-check` additionally needs a display or `xvfb-run`, an OpenGL driver, and `unzip`.
 
+Your own ROM dump goes at `roms/Platinum.nds` (see `roms/README.md`). The build unpacks the game's
+data out of it and packs that into the VPK, so the console needs nothing but the application
+installed; `./build.sh game --rom FILE` uses a ROM somewhere else. Building with no ROM at all works
+and is what the checks use — the VPK then carries no game data and reads a ROM from the memory card
+at run time instead.
+
 The toolchain and source downloads live under `.cache/` in the project folder. To share them between checkouts or
 keep them somewhere else, set `VITAPOKE_CACHE=/path/to/cache`.
 

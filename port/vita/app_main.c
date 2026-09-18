@@ -39,8 +39,10 @@ static const unsigned char scePadding[0x100] __attribute__((used, section(".scep
 extern void NitroMain(void);
 extern void VitaNativeStackProbeInit(void);
 extern void VitaNativeFrameInit(void);
-extern BOOL VitaNativeOverlay_Init(const char *romPath);
+extern BOOL VitaNativeOverlay_Init(void);
 extern BOOL VitaNativeRomFS_SetPath(const char *path);
+extern void FS_Init(u32 channel);
+extern BOOL FS_IsAvailable(void);
 extern BOOL VitaNative_OpenBackup(const char *path);
 
 /* The SDK's texture and palette base tables are zero until these run. On the DS they are filled by
@@ -66,19 +68,35 @@ static int GameThread(SceSize args, void *argp)
 
 	VitaNativeStackProbeInit();
 
-	if (!Exists(VITAPOKE_ROM_PATH)) {
-		VitaNativeMemLog("[APP] no ROM at %s. Copy your own Platinum dump there and run again.",
-		                 VITAPOKE_ROM_PATH);
+	/* Where the game's data comes from. A build made with a ROM has it unpacked into the
+	 * application itself -- 340 files and an index beside the executable -- and needs nothing on
+	 * the memory card. A build made without one reads the ROM from the card, as this port did
+	 * before the assets could be bundled. The file system layer picks between them; all that is
+	 * needed here is to point it at the card when there is nothing bundled, and to say clearly
+	 * when there is neither. */
+	if (!Exists(VITAPOKE_ASSET_INDEX)) {
+		if (!Exists(VITAPOKE_ROM_PATH)) {
+			VitaNativeMemLog("[APP] this build has no game data in it and there is no ROM at %s.",
+			                 VITAPOKE_ROM_PATH);
+			VitaNativeMemLog("[APP] Either copy your own Platinum dump there, or build with"
+			                 " --rom so the data is packed into the VPK.");
+			sceKernelExitProcess(1);
+		}
+		if (!VitaNativeRomFS_SetPath(VITAPOKE_ROM_PATH)) {
+			VitaNativeMemLog("[APP] %s could not be opened as a DS ROM", VITAPOKE_ROM_PATH);
+			sceKernelExitProcess(1);
+		}
+	}
+	FS_Init(0);
+	if (!FS_IsAvailable()) {
+		VitaNativeMemLog("[APP] the game's file system did not start; see the lines above");
 		sceKernelExitProcess(1);
 	}
-	/* The overlay table comes out of the ROM, which is also how a ROM that is not this game, or not
-	 * this region, is caught: its table has a different number of modules. */
-	if (!VitaNativeOverlay_Init(VITAPOKE_ROM_PATH)) {
-		VitaNativeMemLog("[APP] the ROM's overlay table could not be read; see the lines above");
-		sceKernelExitProcess(1);
-	}
-	if (!VitaNativeRomFS_SetPath(VITAPOKE_ROM_PATH)) {
-		VitaNativeMemLog("[APP] %s could not be opened as a DS ROM", VITAPOKE_ROM_PATH);
+	/* The overlay table comes from whichever of the two the file system is serving, which is also
+	 * how data that is not this game, or not this region, is caught: its table has a different
+	 * number of modules. */
+	if (!VitaNativeOverlay_Init()) {
+		VitaNativeMemLog("[APP] the overlay table could not be read; see the lines above");
 		sceKernelExitProcess(1);
 	}
 	/* A save file is never created here, and never grown: it has to already be exactly 512 KB. The

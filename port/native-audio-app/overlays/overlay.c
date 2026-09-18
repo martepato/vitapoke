@@ -8,10 +8,12 @@
  * bounds.
  *
  * The rest of an overlay's identity -- where it lived in DS memory, how big it was -- is metadata
- * the game reads back but never dereferences. That comes from the ROM's own overlay table, read
- * here at startup. The PSP build baked it into the executable at build time, which meant the build
- * needed the ROM; reading it at runtime means one build works with any dump of the same game, and a
- * ROM that does not match is caught at startup with a reason rather than by being wrong later.
+ * the game reads back but never dereferences. That comes from the DS's own ARM9 overlay table,
+ * which the file system layer supplies: out of the bundled nitrofs.idx when the assets were
+ * unpacked into this build, or out of the ROM on the card when they were not. The PSP build baked
+ * it into the executable, which meant its build needed a ROM even to link; taking it from the data
+ * at startup means a table that does not match is caught with a reason rather than by being wrong
+ * later.
  */
 #include <nitro.h>
 #include <stdint.h>
@@ -32,34 +34,37 @@ static u32 Read32(const unsigned char*p){return (u32)p[0]|((u32)p[1]<<8)|((u32)p
 /* The ARM9 overlay table: 32 bytes per module, at the offset in the ROM header at 0x50, and its
  * length at 0x54. Each record starts with the module's own id, which is what makes this table
  * checkable rather than merely plausible. */
-static BOOL ReadOverlayTable(const char*romPath){
- unsigned char header[512],record[32];
- u32 offset,size;
- FILE*rom=fopen(romPath,"rb");
- if(!rom){VitaNativeMemLog("[OVERLAY] cannot open %s",romPath);return FALSE;}
- if(fread(header,1,sizeof header,rom)!=sizeof header){fclose(rom);VitaNativeMemLog("[OVERLAY] %s is too short to be a DS ROM",romPath);return FALSE;}
- offset=Read32(header+0x50);size=Read32(header+0x54);
+/* The table comes from the file system layer, which has it either from the bundled nitrofs.idx or
+ * from the ROM on the card -- this does not need to know which. */
+extern const unsigned char*VitaNativeRomFS_OverlayTable(u32*bytes);
+extern void FS_Init(u32 channel);
+extern BOOL FS_IsAvailable(void);
+
+static BOOL ReadOverlayTable(void){
+ u32 size=0;
+ const unsigned char*table;
+
+ if(!FS_IsAvailable())FS_Init(0);
+ table=VitaNativeRomFS_OverlayTable(&size);
+ if(!table){VitaNativeMemLog("[OVERLAY] no overlay table: the file system did not start");return FALSE;}
  if(size!=32u*COUNT){
-  fclose(rom);
   VitaNativeMemLog("[OVERLAY] this ROM has %lu overlay modules, the build expects %u: wrong game or region",
                    (unsigned long)(size/32u),(unsigned)COUNT);
   return FALSE;
  }
- if(fseek(rom,(long)offset,SEEK_SET)){fclose(rom);VitaNativeMemLog("[OVERLAY] overlay table at %lu is past the end of the ROM",(unsigned long)offset);return FALSE;}
  for(unsigned i=0;i<COUNT;i++){
-  if(fread(record,1,sizeof record,rom)!=sizeof record){fclose(rom);VitaNativeMemLog("[OVERLAY] overlay table ends after %u of %u modules",i,(unsigned)COUNT);return FALSE;}
-  if(Read32(record)!=i){fclose(rom);VitaNativeMemLog("[OVERLAY] overlay table record %u says it is module %lu",i,(unsigned long)Read32(record));return FALSE;}
+  const unsigned char*record=table+32u*i;
+  if(Read32(record)!=i){VitaNativeMemLog("[OVERLAY] overlay table record %u says it is module %lu",i,(unsigned long)Read32(record));return FALSE;}
   romBounds[i][0]=Read32(record+4);   /* where it was loaded in DS memory */
   romBounds[i][1]=Read32(record+8);   /* how much code and data */
   romBounds[i][2]=Read32(record+12);  /* how much BSS */
  }
- fclose(rom);
  return TRUE;
 }
 
-BOOL VitaNativeOverlay_Init(const char*romPath){
+BOOL VitaNativeOverlay_Init(void){
  if(initialized)return TRUE;
- if(!ReadOverlayTable(romPath))return FALSE;
+ if(!ReadOverlayTable())return FALSE;
  for(unsigned i=0;i<COUNT;i++){
   size_t n=ranges[i].dataEnd-ranges[i].data;
   if(n){initialData[i]=malloc(n);if(!initialData[i]){for(unsigned j=0;j<i;j++){free(initialData[j]);initialData[j]=NULL;}return FALSE;}memcpy(initialData[i],ranges[i].data,n);}

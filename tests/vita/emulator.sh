@@ -158,11 +158,19 @@ vita3k_prepare() {
          -e "s|^pref-path: .*|pref-path: $PREF|" "$CONFIG"
 }
 
-# vita3k_install TITLE_ID EBOOT SFO : put an application on the emulator's virtual drive. The VPK is
-# unpacked straight in rather than handed to Vita3K to install, because its install path is a dialog.
+# vita3k_install TITLE_ID EBOOT SFO [ASSET_DIR] : put an application on the emulator's virtual drive.
+# The VPK is unpacked straight in rather than handed to Vita3K to install, because its install path
+# is a dialog. ASSET_DIR, when given, is copied in beside the executable, which is where a VPK built
+# with a ROM puts the game's data and where the port looks for it as app0:.
 vita3k_install() {
-  local id=$1 eboot=$2 sfo=$3 app="$PREF/ux0/app/$1"
+  local id=$1 eboot=$2 sfo=$3 assets=${4:-} app="$PREF/ux0/app/$1"
   rm -rf "$app"; mkdir -p "$app/sce_sys" "$PREF/ux0/data"
   cp "$eboot" "$app/eboot.bin"
   cp "$sfo" "$app/sce_sys/param.sfo"
+  if [ -n "$assets" ] && [ -d "$assets" ]; then
+    # Excluding the build's own stamp, which is not part of the application.
+    rsync -a --exclude .stamp "$assets/" "$app/" ||
+      die "could not copy the unpacked game data into the emulator"
+    log "Installed $(find "$assets" -type f ! -name .stamp | wc -l) unpacked game files"
+  fi
 }

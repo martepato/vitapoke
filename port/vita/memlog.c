@@ -148,6 +148,7 @@ unsigned VitaNativeStackHighWater(unsigned *total)
  */
 extern void VitaNativeRenderMemStats(unsigned *bytes, unsigned *high, unsigned *blocks) __attribute__((weak));
 extern void VitaNativeRomFSStats(unsigned *open, unsigned *high, unsigned *openFail, unsigned *readFail) __attribute__((weak));
+extern void VitaNativeRomFSPoolStats(unsigned *evictions, unsigned *openFail, unsigned *handles) __attribute__((weak));
 extern unsigned VitaNativeRenderFrameCount(void) __attribute__((weak));
 
 static unsigned heapHigh;
@@ -157,20 +158,28 @@ void VitaNativeMemReport(const char *tag)
 	struct mallinfo mi = mallinfo();
 	unsigned gpuBytes = 0, gpuHigh = 0, gpuBlocks = 0;
 	unsigned fsOpen = 0, fsHigh = 0, fsOpenFail = 0, fsReadFail = 0;
+	unsigned poolHandles = 0, poolEvict = 0, poolFail = 0;
 	unsigned stackTotal = 0, stackUsed = VitaNativeStackHighWater(&stackTotal);
 
 	if (VitaNativeRenderMemStats)
 		VitaNativeRenderMemStats(&gpuBytes, &gpuHigh, &gpuBlocks);
 	if (VitaNativeRomFSStats)
 		VitaNativeRomFSStats(&fsOpen, &fsHigh, &fsOpenFail, &fsReadFail);
+	if (VitaNativeRomFSPoolStats)
+		VitaNativeRomFSPoolStats(&poolEvict, &poolFail, &poolHandles);
 	if ((unsigned)mi.uordblks > heapHigh)
 		heapHigh = mi.uordblks;
 
 	VitaNativeMemLog("[MEM] %s frame=%u stack=%u/%u heap_used=%d heap_high=%u heap_arena=%d "
-	                "gpu=%u B (high %u B, %u blocks) files_open=%u/%u open_fail=%u read_fail=%u",
+	                "gpu=%u B (high %u B, %u blocks) files_open=%u/%u open_fail=%u read_fail=%u "
+	                /* The handle pool: how many host files are open of the bound, how often one had
+	                 * to be closed to make room, and how often one would not open. All zero on a
+	                 * build that reads a ROM instead, which has one handle by design. */
+	                "handles=%u evicted=%u handle_fail=%u",
 	                tag ? tag : "", VitaNativeRenderFrameCount ? VitaNativeRenderFrameCount() : 0,
 	                stackUsed, stackTotal, mi.uordblks, heapHigh, mi.arena,
-	                gpuBytes, gpuHigh, gpuBlocks, fsOpen, fsHigh, fsOpenFail, fsReadFail);
+	                gpuBytes, gpuHigh, gpuBlocks, fsOpen, fsHigh, fsOpenFail, fsReadFail,
+	                poolHandles, poolEvict, poolFail);
 }
 
 /* Called every few frames. Reports only when the heap reaches a new high, so a steady frame costs a

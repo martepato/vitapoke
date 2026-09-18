@@ -66,9 +66,10 @@ not ported and are not planned.
 ## What you need
 
 - A Mac or a Linux PC, about 3 GB of free disk space and an internet connection.
-- Your own ROM dump. It is not needed to *build*: it goes on the Vita's memory card, at
-  `ux0:data/vitapoke/Platinum.nds`, and the port reads it from there. See
-  [Putting it on the Vita](#putting-it-on-the-vita).
+- Your own ROM dump. Put it at `roms/Platinum.nds` in the project folder and the build unpacks what
+  the game needs out of it and packs that into the VPK, so the console needs nothing but the
+  application installed. (You can also build without one and keep the ROM on the memory card
+  instead — see [Putting it on the Vita](#putting-it-on-the-vita).)
 
 You don't need to install VitaSDK or any libraries yourself. The build downloads a pinned
 [VitaSDK](https://vitasdk.org) snapshot (about 100 MB) into the project folder the first time, and builds
@@ -90,9 +91,20 @@ A Vita is not needed to work on this, and is not enough to test it: see
 ```sh
 git clone https://github.com/martepato/vitapoke.git
 cd vitapoke
-./build.sh setup     # pinned VitaSDK + vitaGL, about 100 MB, one time
-./build.sh game      # everything, ending in dist/vitapoke-platinum.vpk
+./build.sh setup              # pinned VitaSDK + vitaGL, about 100 MB, one time
+cp ~/Platinum.nds roms/       # your own dump; the build unpacks it into the VPK
+./build.sh game               # everything, ending in dist/vitapoke-platinum.vpk
 ```
+
+The ROM in `roms/` is used automatically; `--rom /some/path.nds` points somewhere else. The build
+unpacks the 340 files of the ROM's own file system and packs them into the VPK beside the
+executable, which is where the game then opens them — the same way it opened them from a cartridge,
+by name. None of the ROM's code is carried: that is already compiled into the executable. A VPK
+built this way is about 53 MB and contains the game, so it is yours to keep and not to share.
+
+**Building without a ROM works too**, and is what the checks and any CI use: the VPK is then 6.5 MB
+with no game data in it, and reads the ROM from `ux0:data/vitapoke/Platinum.nds` on the memory card
+at run time instead. The port picks whichever it finds and says which in its log.
 
 `./build.sh game` fetches the pinned decompilation sources (about 300 MB), generates the
 decompilation's headers, compiles the DS SDK replacement, all 1016 of the game's C files, the Vita
@@ -102,7 +114,9 @@ on four cores.
 Commands:
 
 - `./build.sh setup` — check host tools, download the pinned toolchain and build its dependencies.
-- `./build.sh game` — the whole build, ending in `dist/vitapoke-platinum.vpk`. No ROM needed.
+- `./build.sh game` — the whole build, ending in `dist/vitapoke-platinum.vpk`. Unpacks a ROM from
+  `roms/Platinum.nds` into it if there is one; `--rom FILE` uses another; without either, the VPK
+  carries no game data and reads a ROM from the memory card.
 - `./build.sh check` — the checks that need no ROM and no emulator (a few seconds).
 - `./build.sh emu-check` — run the platform layer in the Vita3K emulator (downloads it; a few minutes).
 - `./build.sh clean` — remove the build output; downloads in `.cache` are kept.
@@ -121,35 +135,30 @@ VitaShell, or on the card in a card reader — then select it in VitaShell and c
 installs as title `VPOK00001` (so, `ux0:app/VPOK00001`) and appears on the LiveArea as
 "vitapoke (Pokemon Platinum)".
 
-**2. Launch it once.** It creates `ux0:data/vitapoke/` itself, writes `log.txt`, and stops,
-because the ROM is not there yet:
+**2. Launch it once.** It creates `ux0:data/vitapoke/` itself, writes `log.txt`, and stops, because
+there is no save file yet.
 
-```
-[APP] no ROM at ux0:data/vitapoke/Platinum.nds. Copy your own Platinum dump there and run again.
-```
-
-That is the easy way to get the folder made with the right name. You can also just create it
-yourself.
-
-**3. Put your files in that folder.** Exactly these names, directly in `ux0:data/vitapoke/`:
+**3. Put your save in that folder.** Exactly this name, directly in `ux0:data/vitapoke/`:
 
 | Full path on the card | What it is |
 |---|---|
-| `ux0:data/vitapoke/Platinum.nds` | your own ROM dump. Opened read only and never modified |
 | `ux0:data/vitapoke/Platinum.sav` | a 512 KB DS save. `python3 scripts/make_save.py Platinum.sav` writes a blank one; an existing DS save from an emulator or a cartridge dump works too |
 | `ux0:data/vitapoke/log.txt` | written by the port, not by you. This is what to send with a bug report |
+| `ux0:data/vitapoke/Platinum.nds` | **only if you built without a ROM**: your own dump, which the port then reads from here. A VPK built with one needs nothing here |
 
 The save file has to already exist and be exactly 512 KB. The port will not create one or resize
 what is there, so that nothing else at that path can be overwritten by a wrong guess at the format.
 
-**4. Launch it again.** It reads the ROM from that folder and starts. If anything is wrong,
-`log.txt` says which file it could not open and why, rather than showing a black screen — copy it
-back off the card the same way you put the ROM on.
+**4. Launch it again.** Its first log line says where the game's data is coming from — `[ROMFS] 462
+files bundled with this build` for a VPK built with a ROM. If anything is wrong, `log.txt` says
+which file it could not open and why, rather than showing a black screen; copy it off the card the
+same way you put the save on.
 
 It has to be `ux0` — the memory card (or the internal storage on a PCH-2000, or `uma0` re-mounted as
 `ux0`, whichever your setup calls `ux0`). A Vita application cannot write next to its own executable:
-`ux0:app` is mounted read only while the application runs, which is why the ROM, the save and the log
-live in a directory under `ux0:data` that you own instead.
+`ux0:app` is mounted read only while the application runs, which is why the save and the log live in
+a directory under `ux0:data` that you own instead. The game's data is read only, so that can and does
+live next to the executable.
 
 ## Using a VitaSDK you already have
 
@@ -287,7 +296,10 @@ No ROM data, game assets or prebuilt executables in commits. Changes to the deco
 5. Everything is linked into a VPK, with each DS overlay module's data laid out so the game can
    "load" a module and get its static data freshly initialised, as the DS did.
 
-At runtime the game reads its data files (graphics, maps, sound) from your ROM on the memory card.
+The game's data files (graphics, maps, text, sound) are unpacked from your ROM when you build and
+packed into the VPK, so at runtime the game opens them by name from inside the application, as it
+opened them from a cartridge. Build without a ROM and it reads them from one on the memory card
+instead.
 
 ## Credits and licenses
 
