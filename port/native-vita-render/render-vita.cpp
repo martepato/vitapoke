@@ -48,6 +48,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include <psp2/kernel/threadmgr.h>
+
 #ifdef VITAPOKE_FRAME_DUMP
 #ifndef VITAPOKE_FRAME_DUMP_LAST
 #define VITAPOKE_FRAME_DUMP_LAST 600
@@ -76,7 +78,11 @@ static_assert(VITAPOKE_MAIN_X + VITAPOKE_MAIN_W <= VITAPOKE_SUB_X,
 
 /* The two composed DS screens. 256 columns of stride to keep each row aligned, as the compositor
  * expects, and 256 rows so a texture upload can treat it as a square. */
-static u32 raw[2][256 * 256] __attribute__((aligned(64)));
+/* Two pairs of composed screens. The compositor runs on its own thread (see the note at Present)
+ * and writes the pair the display is not reading, so the upload never races the composite. */
+static u32 rawBuffers[2][2][256 * 256] __attribute__((aligned(64)));
+static unsigned rawWrite;                        /* the pair the compositor is filling */
+#define raw rawBuffers[rawWrite]
 
 static GPU2D::Unit engineA(0), engineB(1);
 static GPU2D::SoftRenderer renderer;
@@ -182,6 +188,54 @@ extern "C" void VitaNativeRenderSetInput(unsigned keys, int touchMode, int down,
 	touchY = y;
 }
 
+/* The compositor runs on its own thread.
+ *
+ * A DS update is two vertical blanks, 33 ms, and the game spends nearly all of it asleep waiting for
+ * them -- 25 ms of the 31 ms it took on hardware. Composing the two screens took another 10 to 19 ms
+ * AFTER that wait, on the same thread, so the port turned a 33 ms budget into 50 and the game ran at
+ * two thirds speed with a core idle throughout.
+ *
+ * So the composite is handed to a worker and the game thread goes straight back to the game. The
+ * work lands in the window the game was going to sleep through anyway. What the game thread still
+ * does is the GPU: vitaGL's context belongs to the thread that made it, so the upload and the draw
+ * stay here, and they are half a millisecond.
+ *
+ * The cost is one frame of latency -- the screens put up are the ones composed during the previous
+ * update -- and tearing: the worker reads the DS's VRAM while the game is free to write it, where
+ * before it read a quiescent snapshot. A DS does the same thing, drawing a scanline at a time while
+ * the program runs, and the alternative is copying half a megabyte of VRAM per frame to avoid it.
+ *
+ * The registers are not read that way. Those are snapshotted here, on the game thread, into the job:
+ * they are small, and a composite that read half of one frame's DISPCNT and half of the next's would
+ * not tear, it would be wrong.
+ */
+struct FrameJob {
+	unsigned power, a, b;
+	unsigned buffer;        /* which pair of raw buffers to compose into */
+};
+static FrameJob job;
+static SceUID jobReady = -1, jobDone = -1;
+static SceUID worker = -1;
+static bool jobOutstanding;      /* a composite has been handed over and not yet collected */
+static unsigned composeUsWorker; /* the worker's own timing, read by the game thread when it waits */
+/* How long the game thread had to wait for a composite that did not finish in time. Zero means the
+ * work was completely hidden behind the game's own update, which is the point of doing it this way. */
+static unsigned waitUs = 0;
+
+static void Compose(const FrameJob &j);
+
+static int WorkerMain(SceSize args, void *argp)
+{
+	(void)args;
+	(void)argp;
+	for (;;) {
+		if (sceKernelWaitSema(jobReady, 1, NULL) < 0)
+			return 0;
+		Compose(job);
+		sceKernelSignalSema(jobDone, 1);
+	}
+}
+
 extern "C" unsigned VitaNativeRenderLastDrawMask() { return lastDraw; }
 extern "C" unsigned VitaNativeRenderFrameCount() { return frames; }
 
@@ -201,6 +255,22 @@ extern "C" int VitaNativeRenderInit()
 
 	if (VitaGpuInit() < 0)
 		return -1;
+
+	/* The compositor's thread. Just below the game's own priority, so it runs while the game sleeps
+	 * on the vertical blank and never in front of the game when both are runnable. */
+	if (worker < 0) {
+		jobReady = sceKernelCreateSema("vitapoke_compose_go", 0, 0, 1, NULL);
+		jobDone = sceKernelCreateSema("vitapoke_compose_done", 0, 0, 1, NULL);
+		worker = sceKernelCreateThread("vitapoke_compose", WorkerMain, 0x60 + 17, 64 * 1024, 0,
+		                               SCE_KERNEL_THREAD_CPU_AFFINITY_MASK_DEFAULT, NULL);
+		if (jobReady < 0 || jobDone < 0 || worker < 0) {
+			VitaNativeMemLog("[RENDER] could not start the compositor thread");
+			return -1;
+		}
+		sceKernelStartThread(worker, 0, NULL);
+	}
+	jobOutstanding = false;
+	job.buffer = 0;
 
 	/* The matrix stacks the DS geometry engine keeps. The game sets them up once and then relies
 	 * on them, so they start as identity rather than as whatever the SDK last left behind. */
@@ -229,21 +299,13 @@ extern "C" int VitaNativeRenderBegin()
 	return 0;
 }
 
-static int Present()
+/* Compose one frame's two screens into its pair of buffers. Runs on the worker; touches no GPU. */
+static void Compose(const FrameJob &j)
 {
-	if (!openFrame)
-		return -1;
-	openFrame = false;
-
-	unsigned power = reg16(0x304), a = reg32(0), b = reg32(0x1000);
+	const unsigned power = j.power, a = j.a, b = j.b;
 	unsigned long long phase = VitaOS_Now();
 	(void)b;
-
-	/* Finish the 3D and read it back, but only when engine A is actually showing it: the display
-	 * has to be on, in its normal 2D mode, with BG0 enabled and taking its content from the 3D
-	 * engine. Outside the field and battle that is not the case, and then there is no reason to
-	 * make the CPU wait for the GPU at all. */
-	VitaNativeG3FrameEnd((power & 2) && ((a >> 16) & 3) == 1 && (a & (1 << 8)) && (a & (1 << 3)));
+	rawWrite = j.buffer;
 
 	/* Display capture and the main-memory FIFO display mode are DS features this port does not
 	 * implement. The game does not use them; if it ever did, the frame would be wrong, so say so
@@ -369,19 +431,62 @@ static int Present()
 	}
 #endif
 
-	/* Uploading the panels and drawing them are timed apart: one is a copy into GPU memory that
-	 * stalls if the GPU is still reading, the other is two quads and a swap, and a log that adds
-	 * them together cannot say which is costing the frame. */
-	phase = VitaOS_Now();
-	for (unsigned e = 0; e < 2; e++)
-		if (lastDraw & (1u << e))
-			VitaGpuPanelUpload((int)e, raw[e]);
-	uploadUs = (unsigned)(VitaOS_Now() - phase);
 
-	phase = VitaOS_Now();
-	/* POWCNT1 bit 15 says which engine is on the physical top screen. */
-	VitaGpuPresent((power & 0x8000) != 0);
-	presentUs = (unsigned)(VitaOS_Now() - phase);
+	composeUsWorker = bindUs + drawUs;
+}
+
+static int Present()
+{
+	if (!openFrame)
+		return -1;
+	openFrame = false;
+
+	unsigned long long phase;
+
+	/* Collect the previous frame's composite before touching its buffers. This is the only place
+	 * the game thread can block on the worker, and it only does so when a composite took longer
+	 * than the update it was hidden behind. */
+	if (jobOutstanding) {
+		phase = VitaOS_Now();
+		sceKernelWaitSema(jobDone, 1, NULL);
+		waitUs = (unsigned)(VitaOS_Now() - phase);
+		jobOutstanding = false;
+
+		phase = VitaOS_Now();
+		for (unsigned e = 0; e < 2; e++)
+			if (lastDraw & (1u << e))
+				VitaGpuPanelUpload((int)e, rawBuffers[job.buffer][e]);
+		uploadUs = (unsigned)(VitaOS_Now() - phase);
+
+		phase = VitaOS_Now();
+		/* POWCNT1 bit 15 says which engine is on the physical top screen. */
+		VitaGpuPresent((job.power & 0x8000) != 0);
+		presentUs = (unsigned)(VitaOS_Now() - phase);
+	} else {
+		waitUs = uploadUs = presentUs = 0;
+	}
+
+	/* Hand the next one over. The registers are read here, on this thread, so the worker sees one
+	 * frame's worth of them. */
+	job.power = reg16(0x304);
+	job.a = reg32(0);
+	job.b = reg32(0x1000);
+
+	/* Finish the 3D and read it back, but only when engine A is actually showing it: the display
+	 * has to be on, in its normal 2D mode, with BG0 enabled and taking its content from the 3D
+	 * engine. Outside the field and battle that is not the case, and then there is no reason to
+	 * make the CPU wait for the GPU at all.
+	 *
+	 * On this thread, before the hand-off, for two reasons: it is a GPU call, and the composite
+	 * about to start reads what it produces. The previous composite has already been collected
+	 * above, so nothing is reading the readback buffer while it is refilled. */
+	VitaNativeG3FrameEnd((job.power & 2) && ((job.a >> 16) & 3) == 1 && (job.a & (1 << 8))
+	                     && (job.a & (1 << 3)));
+
+	job.buffer ^= 1u;
+	jobOutstanding = true;
+	sceKernelSignalSema(jobReady, 1);
+
 	frames++;
 	return 0;
 }
@@ -393,6 +498,12 @@ extern "C" void VitaNativeRenderShutdown()
 {
 	if (!initialized)
 		return;
+	/* Let a composite in flight finish before anything it reads goes away. It cannot be abandoned:
+	 * the worker is inside the DS's VRAM and the 2D engines' state, not in anything interruptible. */
+	if (jobOutstanding) {
+		sceKernelWaitSema(jobDone, 1, NULL);
+		jobOutstanding = false;
+	}
 	openFrame = false;
 	VitaNativeG3Release();
 	VitaGpuShutdown();
@@ -419,10 +530,12 @@ extern "C" void VitaNativeRenderComposedTake(unsigned *top, unsigned *bottom)
 }
 
 /* 0 = binding the DS registers and memory, 1 = compositing, 2 = putting it on the screen,
- * 3 = uploading the composed panels to the GPU. */
+ * 3 = uploading the composed panels to the GPU, 4 = waiting for the compositor to finish the
+ * previous frame, which is zero when its work fitted inside the game's own update. */
 extern "C" unsigned RenderStage(unsigned stage)
 {
-	return stage == 0 ? bindUs : stage == 1 ? drawUs : stage == 3 ? uploadUs : presentUs;
+	return stage == 0 ? bindUs : stage == 1 ? drawUs : stage == 3 ? uploadUs
+	     : stage == 4 ? waitUs : presentUs;
 }
 
 /* What the port has asked the GPU to hold, for the memory report. vitaGL owns its own pools; this is

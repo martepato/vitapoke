@@ -63,7 +63,7 @@ static unsigned long long gameUs, audioUs, renderUs, idleUs;
 /* The render phase's parts, accumulated like the rest. They used to be printed straight from the
  * renderer, which meant the report mixed true averages with whatever the last frame happened to
  * cost -- and the last frame of a period is often a cheap one, so the expensive stage looked free. */
-static unsigned long long accBindUs, accComposeUs, accUploadUs, accPresentUs;
+static unsigned long long accBindUs, accComposeUs, accUploadUs, accPresentUs, accWaitUs;
 
 void VitaNativeFrameInit(void)
 {
@@ -94,20 +94,19 @@ static void Report(void)
 	VitaNativeG3TextureStats(&entries, &bytes, &binds, &hits, &decodes, &evictions);
 	VitaNativeMemLog("[PERF] frames=%u fps=%.2f game_us=%llu idle_us=%llu audio_us=%llu "
 	                 "render_us=%llu bind_us=%llu compose_us=%llu upload_us=%llu present_us=%llu "
-	                 "other_us=%llu "
+	                 "wait_us=%llu other_us=%llu "
 	                 "composed=%u/%u polygons=%u tex=%u/%u binds=%u hits=%u decodes=%u evictions=%u",
 	                 frames, window ? REPORT_FRAMES * 1000000.0 / window : 0.0,
 	                 gameUs / REPORT_FRAMES, idleUs / REPORT_FRAMES, audioUs / REPORT_FRAMES,
 	                 renderUs / REPORT_FRAMES, accBindUs / REPORT_FRAMES,
 	                 accComposeUs / REPORT_FRAMES, accUploadUs / REPORT_FRAMES,
-	                 accPresentUs / REPORT_FRAMES,
+	                 accPresentUs / REPORT_FRAMES, accWaitUs / REPORT_FRAMES,
 	                 /* What is in the render phase besides those four: the 3D readback, the input
 	                  * hand-off, and whatever else grows there later. It was 3.8 ms a frame on
 	                  * hardware with no 3D on screen at all, which is why it is printed. Clamped at
 	                  * zero: the parts are sampled at slightly different moments from the whole. */
-	                 renderUs > accBindUs + accComposeUs + accUploadUs + accPresentUs
-	                     ? (renderUs - accBindUs - accComposeUs - accUploadUs - accPresentUs)
-	                           / REPORT_FRAMES
+	                 renderUs > accUploadUs + accPresentUs + accWaitUs
+	                     ? (renderUs - accUploadUs - accPresentUs - accWaitUs) / REPORT_FRAMES
 	                     : 0ULL,
 	                 composedTop, composedBottom,
 	                 VitaNativeG3Polygons(), entries, bytes, binds, hits, decodes, evictions);
@@ -116,7 +115,7 @@ static void Report(void)
 	if (sound[0])
 		VitaNativeMemLog("%s", sound);
 	gameUs = audioUs = renderUs = idleUs = 0;
-	accBindUs = accComposeUs = accUploadUs = accPresentUs = 0;
+	accBindUs = accComposeUs = accUploadUs = accPresentUs = accWaitUs = 0;
 	frameStart = VitaOS_Now();
 }
 
@@ -159,6 +158,7 @@ void VitaNativeFrameComplete(void)
 	accComposeUs += RenderStage(1);
 	accUploadUs += RenderStage(3);
 	accPresentUs += RenderStage(2);
+	accWaitUs += RenderStage(4);
 	frames++;
 
 	/* The first frames, one line each. A port that reaches the game's first scene and then appears
