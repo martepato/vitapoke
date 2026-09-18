@@ -99,12 +99,13 @@ static int GameThread(SceSize args, void *argp)
 		VitaNativeMemLog("[APP] the overlay table could not be read; see the lines above");
 		sceKernelExitProcess(1);
 	}
-	/* A save file is never created here, and never grown: it has to already be exactly 512 KB. The
-	 * game writes its own layout over the whole file, so anything else at that path is somebody
-	 * else's data. scripts/make_save.py writes a blank one. */
+	/* A missing save is created, blank, as a new cartridge would be. A save that is there but is
+	 * not 512 KB is left alone: the game writes its own layout over the whole file, so anything
+	 * else at that path is somebody else's data and this port cannot put it back. The line above
+	 * this one in the log says which of those happened. */
 	if (!VitaNative_OpenBackup(VITAPOKE_SAVE_PATH)) {
-		VitaNativeMemLog("[APP] no usable save at %s (it must exist and be exactly 512 KB); "
-		                 "refusing to touch it", VITAPOKE_SAVE_PATH);
+		VitaNativeMemLog("[APP] no usable save at %s: it must be exactly 512 KB, and what is there "
+		                 "is not, so it has been left untouched", VITAPOKE_SAVE_PATH);
 		sceKernelExitProcess(1);
 	}
 

@@ -135,24 +135,26 @@ VitaShell, or on the card in a card reader — then select it in VitaShell and c
 installs as title `VPOK00001` (so, `ux0:app/VPOK00001`) and appears on the LiveArea as
 "vitapoke (Pokemon Platinum)".
 
-**2. Launch it once.** It creates `ux0:data/vitapoke/` itself, writes `log.txt`, and stops, because
-there is no save file yet.
+**2. Launch it.** That is all, for a VPK built with a ROM. It creates `ux0:data/vitapoke/`, writes a
+blank 512 KB save there as a new cartridge would be, and starts. Its first log lines say where the
+game's data came from and what it did about the save:
 
-**3. Put your save in that folder.** Exactly this name, directly in `ux0:data/vitapoke/`:
+```
+[ROMFS] 462 files bundled with this build, 8 handles
+[SAVE] created a blank 512 KB save at ux0:data/vitapoke/Platinum.sav
+```
+
+**What ends up in `ux0:data/vitapoke/`:**
 
 | Full path on the card | What it is |
 |---|---|
-| `ux0:data/vitapoke/Platinum.sav` | a 512 KB DS save. `python3 scripts/make_save.py Platinum.sav` writes a blank one; an existing DS save from an emulator or a cartridge dump works too |
+| `ux0:data/vitapoke/Platinum.sav` | your save, 512 KB, created on the first launch. An existing DS save from an emulator or a cartridge dump can be put here instead, and is used as it is |
 | `ux0:data/vitapoke/log.txt` | written by the port, not by you. This is what to send with a bug report |
 | `ux0:data/vitapoke/Platinum.nds` | **only if you built without a ROM**: your own dump, which the port then reads from here. A VPK built with one needs nothing here |
 
-The save file has to already exist and be exactly 512 KB. The port will not create one or resize
-what is there, so that nothing else at that path can be overwritten by a wrong guess at the format.
-
-**4. Launch it again.** Its first log line says where the game's data is coming from — `[ROMFS] 462
-files bundled with this build` for a VPK built with a ROM. If anything is wrong, `log.txt` says
-which file it could not open and why, rather than showing a black screen; copy it off the card the
-same way you put the save on.
+A save is only ever *created*, never corrected. If something is already at that path and is not
+512 KB, the port leaves it alone and stops, because the game writes its own layout over the whole
+file and a wrong guess at what is there would destroy a save that cannot be put back.
 
 It has to be `ux0` — the memory card (or the internal storage on a PCH-2000, or `uma0` re-mounted as
 `ux0`, whichever your setup calls `ux0`). A Vita application cannot write next to its own executable:

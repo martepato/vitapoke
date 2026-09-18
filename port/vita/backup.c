@@ -37,6 +37,36 @@ static SceUID gate = -1;
 static int owner = -1;
 static CARDResult result = CARD_RESULT_NO_RESPONSE;
 
+/* Write a blank save: 512 KiB of 0xFF, which is what erased flash reads as and therefore what a new
+ * cartridge looks like. The game formats it itself on finding nothing valid there.
+ *
+ * Only ever called for a path with no file at it. Anything already there is somebody's data, and a
+ * wrong guess at its format would destroy a save this port cannot replace -- so a file of the wrong
+ * size is still refused rather than corrected, which is the whole reason this function is separate
+ * from the one below. */
+static BOOL CreateBlankBackup(const char *path)
+{
+	unsigned char blank[1024];
+	FILE *f;
+	unsigned written;
+
+	memset(blank, 0xFF, sizeof blank);
+	f = fopen(path, "wb");
+	if (!f)
+		return FALSE;
+	for (written = 0; written < BACKUP_BYTES; written += sizeof blank) {
+		if (fwrite(blank, 1, sizeof blank, f) != sizeof blank) {
+			fclose(f);
+			remove(path);
+			return FALSE;
+		}
+	}
+	if (fclose(f))
+		return FALSE;
+	VitaNativeMemLog("[SAVE] created a blank 512 KB save at %s", path);
+	return TRUE;
+}
+
 BOOL VitaNative_OpenBackup(const char *path)
 {
 	FILE *candidate;
@@ -44,8 +74,31 @@ BOOL VitaNative_OpenBackup(const char *path)
 	if (file || owner != -1)
 		return FALSE;
 	candidate = fopen(path, "r+b");
-	if (!candidate)
-		return FALSE;
+	if (!candidate) {
+		/* Opening for writing can fail for two very different reasons, and only one of them may
+		 * lead to a file being written here: there is nothing at that path, or there is something
+		 * that cannot be opened read-write. Creating in the second case would truncate a save this
+		 * port cannot replace, so it is checked for rather than assumed away. */
+		FILE *probe = fopen(path, "rb");
+
+		if (probe) {
+			fclose(probe);
+			VitaNativeMemLog("[SAVE] %s exists but will not open for writing; refusing to replace it",
+			                 path);
+			return FALSE;
+		}
+		/* Nothing there at all: make one, which is what a player expects on a first launch and
+		 * cannot destroy anything. If it cannot be made -- a full card, a read-only one -- say so
+		 * here, because the caller can only report that there is no usable save. */
+		if (!CreateBlankBackup(path)) {
+			VitaNativeMemLog("[SAVE] there is no save at %s and one could not be created there",
+			                 path);
+			return FALSE;
+		}
+		candidate = fopen(path, "r+b");
+		if (!candidate)
+			return FALSE;
+	}
 	if (fseek(candidate, 0, SEEK_END) || ftell(candidate) != (long)BACKUP_BYTES) {
 		fclose(candidate);
 		return FALSE;
