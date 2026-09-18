@@ -85,7 +85,7 @@ static bool initialized = false, openFrame = false;
 static unsigned frames = 0, lastDraw = 0, previousPower = ~0u, grace = 0;
 static unsigned inputKeys = 0, oldKeys = 0;
 static int touchDown = 0, oldDown = 0, touchX = 128, touchY = 96, oldX = 128, oldY = 96;
-static unsigned bindUs = 0, drawUs = 0, presentUs = 0, last2DUs = 0;
+static unsigned bindUs = 0, drawUs = 0, uploadUs = 0, presentUs = 0, last2DUs = 0;
 
 /* The DS's memory-mapped graphics registers, as the port keeps them: an array the game writes
  * through the SDK, which this reads back to configure the compositor. */
@@ -307,10 +307,16 @@ static int Present()
 	}
 #endif
 
+	/* Uploading the panels and drawing them are timed apart: one is a copy into GPU memory that
+	 * stalls if the GPU is still reading, the other is two quads and a swap, and a log that adds
+	 * them together cannot say which is costing the frame. */
 	phase = VitaOS_Now();
 	for (unsigned e = 0; e < 2; e++)
 		if (lastDraw & (1u << e))
 			VitaGpuPanelUpload((int)e, raw[e]);
+	uploadUs = (unsigned)(VitaOS_Now() - phase);
+
+	phase = VitaOS_Now();
 	/* POWCNT1 bit 15 says which engine is on the physical top screen. */
 	VitaGpuPresent((power & 0x8000) != 0);
 	presentUs = (unsigned)(VitaOS_Now() - phase);
@@ -339,10 +345,11 @@ extern "C" void VitaNativeRenderGetTimings(unsigned *readbackUs, unsigned *softw
 		*software2DUs = last2DUs;
 }
 
-/* 0 = binding the DS registers and memory, 1 = compositing, 2 = putting it on the screen. */
+/* 0 = binding the DS registers and memory, 1 = compositing, 2 = putting it on the screen,
+ * 3 = uploading the composed panels to the GPU. */
 extern "C" unsigned RenderStage(unsigned stage)
 {
-	return stage == 0 ? bindUs : stage == 1 ? drawUs : presentUs;
+	return stage == 0 ? bindUs : stage == 1 ? drawUs : stage == 3 ? uploadUs : presentUs;
 }
 
 /* What the port has asked the GPU to hold, for the memory report. vitaGL owns its own pools; this is
