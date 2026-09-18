@@ -66,8 +66,9 @@ not ported and are not planned.
 ## What you need
 
 - A Mac or a Linux PC, about 3 GB of free disk space and an internet connection.
-- Your own ROM dump. It is not needed to *build* — you put it on the Vita's memory card and the port
-  reads it there.
+- Your own ROM dump. It is not needed to *build*: it goes on the Vita's memory card, at
+  `ux0:data/vitapoke/Platinum.nds`, and the port reads it from there. See
+  [Putting it on the Vita](#putting-it-on-the-vita).
 
 You don't need to install VitaSDK or any libraries yourself. The build downloads a pinned
 [VitaSDK](https://vitasdk.org) snapshot (about 100 MB) into the project folder the first time, and builds
@@ -75,11 +76,11 @@ its GPU dependencies there too. Nothing is installed outside the project folder,
 system is changed. If you already have VitaSDK and would rather use it, see
 [Using a VitaSDK you already have](#using-a-vitasdk-you-already-have).
 
-On the console you also need **`libshacccg.suprx`** at `ur0:data/libshacccg.suprx`. It is Sony's
-shader compiler, taken from a firmware update, and most custom-firmware setups already have it: the
-renderer's shaders are compiled on the console, because there is no way to build them beforehand
-without that compiler. If it is missing, vitapoke says so in its log and stops rather than showing a
-black screen.
+On the console you also need **`libshacccg.suprx`**, at `ur0:data/libshacccg.suprx` or
+`ur0:data/external/libshacccg.suprx` — the port looks in both. It is Sony's shader compiler, taken
+from a firmware update, and most custom-firmware setups already have it: the renderer's shaders are
+compiled on the console, because there is no way to build them beforehand without that compiler. If
+it is missing, vitapoke says so in its log and stops rather than showing a black screen.
 
 A Vita is not needed to work on this, and is not enough to test it: see
 [Testing](#testing).
@@ -98,17 +99,6 @@ decompilation's headers, compiles the DS SDK replacement, all 1016 of the game's
 platform layer and the renderer, and links the lot into a VPK. About eight minutes from a clean tree
 on four cores.
 
-Then, on the Vita: install the VPK, and put your files in `ux0:data/vitapoke/` —
-
-| File | What it is |
-|---|---|
-| `Platinum.nds` | your own ROM dump (read only, never modified) |
-| `Platinum.sav` | a 512 KB DS save. `python3 scripts/make_save.py Platinum.sav` writes a blank one |
-| `log.txt` | written by the port; this is what to send with a bug report |
-
-The port will not create or resize the save file: it has to already exist and be exactly 512 KB, so
-that nothing else at that path can be overwritten.
-
 Commands:
 
 - `./build.sh setup` — check host tools, download the pinned toolchain and build its dependencies.
@@ -121,6 +111,45 @@ Commands:
 Finished phases are skipped on a rerun via stamp files in `.work/vita/`; delete one to redo that phase.
 The tree also records which toolchain built it, so switching between your own VitaSDK and the pinned
 one rebuilds from scratch rather than linking objects from two different compilers.
+
+## Putting it on the Vita
+
+Your console needs custom firmware (HENkaku/h-encore or Enso) and VitaShell, as any homebrew does.
+
+**1. Install the VPK.** Copy `dist/vitapoke-platinum.vpk` to the Vita — over USB or FTP with
+VitaShell, or on the card in a card reader — then select it in VitaShell and confirm the install. It
+installs as title `VPOK00001` (so, `ux0:app/VPOK00001`) and appears on the LiveArea as
+"vitapoke (Pokemon Platinum)".
+
+**2. Launch it once.** It creates `ux0:data/vitapoke/` itself, writes `log.txt`, and stops,
+because the ROM is not there yet:
+
+```
+[APP] no ROM at ux0:data/vitapoke/Platinum.nds. Copy your own Platinum dump there and run again.
+```
+
+That is the easy way to get the folder made with the right name. You can also just create it
+yourself.
+
+**3. Put your files in that folder.** Exactly these names, directly in `ux0:data/vitapoke/`:
+
+| Full path on the card | What it is |
+|---|---|
+| `ux0:data/vitapoke/Platinum.nds` | your own ROM dump. Opened read only and never modified |
+| `ux0:data/vitapoke/Platinum.sav` | a 512 KB DS save. `python3 scripts/make_save.py Platinum.sav` writes a blank one; an existing DS save from an emulator or a cartridge dump works too |
+| `ux0:data/vitapoke/log.txt` | written by the port, not by you. This is what to send with a bug report |
+
+The save file has to already exist and be exactly 512 KB. The port will not create one or resize
+what is there, so that nothing else at that path can be overwritten by a wrong guess at the format.
+
+**4. Launch it again.** It reads the ROM from that folder and starts. If anything is wrong,
+`log.txt` says which file it could not open and why, rather than showing a black screen — copy it
+back off the card the same way you put the ROM on.
+
+It has to be `ux0` — the memory card (or the internal storage on a PCH-2000, or `uma0` re-mounted as
+`ux0`, whichever your setup calls `ux0`). A Vita application cannot write next to its own executable:
+`ux0:app` is mounted read only while the application runs, which is why the ROM, the save and the log
+live in a directory under `ux0:data` that you own instead.
 
 ## Using a VitaSDK you already have
 
