@@ -99,21 +99,58 @@ PFNGLDEPTHFUNCPROC glad_glDepthFunc = OnDepthFunc;
  * including a copy of the source bytes, because the game overwrites texture VRAM in place and
  * nothing else would tell us that it had.
  */
-#define TEXTURE_SLOTS 16
-#define TEXTURE_BUDGET (2 * 1024 * 1024)
+/* How many textures to keep, and how much memory they may take between them.
+ *
+ * Sixteen slots was inherited from the PSP build and is not enough: on the real game the cache
+ * filled during the opening cutscene at 76 KB -- nowhere near its byte budget -- and, with nothing
+ * evicted, every texture the title screen then asked for was refused. It drew untextured for eighty
+ * thousand frames. The slot count was the binding constraint, so it is now large enough that the
+ * budget is what decides, and the budget is what a DS can address: 512 KB of texture VRAM and 128 KB
+ * of palette, which cannot expand to more than about 8 MB of 32-bit pixels however it is sliced.
+ * Keeping every texture a scene can possibly have is therefore affordable, and it makes the cache
+ * behave the same way in a busy scene as in a quiet one. */
+#define TEXTURE_SLOTS 256
+#define TEXTURE_BUDGET (8 * 1024 * 1024)
 
 struct TextureEntry {
 	unsigned offset, pal, format, w, h, color0;
 	unsigned texture;
 	u8 *snapshot;       /* what it was decoded from: w*h of VRAM, then 64 bytes of palette */
 	unsigned bytes;
+	unsigned lastUse;   /* the value of `binds` when this entry was last wanted */
 };
 
 static TextureEntry cache[TEXTURE_SLOTS];
 static unsigned cacheSize, cacheBytes;
-static unsigned decodes, binds, hits;
+static unsigned decodes, binds, hits, evictions;
 /* How many times VitaGpuTextureCreate has said no; only the first few reach the log. */
 static unsigned refusals;
+
+/* Give up the least recently used entry, so that a scene needing more than the cache holds keeps
+ * drawing with textures rather than without. Least recently used, rather than the oldest: a scene
+ * change replaces the whole working set, and the entries the new scene is not asking for are exactly
+ * the ones that stopped being bound. */
+static void EvictOldest(void)
+{
+	unsigned oldest = 0;
+
+	if (!cacheSize)
+		return;
+	for (unsigned i = 1; i < cacheSize; i++)
+		if (cache[i].lastUse < cache[oldest].lastUse)
+			oldest = i;
+
+	VitaGpuTextureDestroy(cache[oldest].texture);
+	free(cache[oldest].snapshot);
+	cacheBytes -= cache[oldest].bytes;
+	/* Fill the hole with the last entry: the cache is searched linearly and has no order of its
+	 * own, so there is nothing to preserve by shifting. */
+	cache[oldest] = cache[cacheSize - 1];
+	cache[cacheSize - 1].snapshot = NULL;
+	cache[cacheSize - 1].texture = 0;
+	cacheSize--;
+	evictions++;
+}
 
 /* Returns the GPU texture for the geometry engine's current texture parameters, decoding it first if
  * this is the first time it has been seen. 0 means "draw untextured", which is also what the DS does
@@ -142,6 +179,7 @@ static unsigned CurrentTexture(void)
 		    !memcmp(e.snapshot, s_HW_LCDC_VRAM + p.textureOffset, e.w * e.h) &&
 		    !memcmp(e.snapshot + e.w * e.h, s_HW_LCDC_VRAM + 0x80000 + s_texPlttBase, 64)) {
 			hits++;
+			e.lastUse = binds;
 			return e.texture;
 		}
 	}
@@ -152,12 +190,15 @@ static unsigned CurrentTexture(void)
 		u8 *src = s_HW_LCDC_VRAM + p.textureOffset;
 		u16 *pal = (u16 *)(s_HW_LCDC_VRAM + 0x80000 + s_texPlttBase);
 
-		/* Nothing is evicted yet. The PSP build found Platinum's field and battle scenes fit well
-		 * inside sixteen textures and a megabyte; if a scene ever does not, this says so instead
-		 * of quietly drawing the wrong thing. */
+		/* Make room. One texture cannot be larger than the budget -- the DS cannot address one
+		 * that big -- so this terminates with room for it. */
+		while ((cacheSize >= TEXTURE_SLOTS || cacheBytes + bytes > TEXTURE_BUDGET) && cacheSize)
+			EvictOldest();
 		if (cacheSize >= TEXTURE_SLOTS || cacheBytes + bytes > TEXTURE_BUDGET) {
-			VitaNativeMemLog("[TEXTURE] cache full at %u entries, %u bytes: 3D frame incomplete",
-			                cacheSize, cacheBytes);
+			/* Only reachable if a single texture exceeds the whole budget, which the paragraph
+			 * above says cannot happen -- so say so once rather than every frame. */
+			if (refusals++ == 0)
+				VitaNativeMemLog("[TEXTURE] a %ux%u texture does not fit the cache at all", w, h);
 			return 0;
 		}
 		pixels = (u8 *)malloc(bytes);
@@ -184,6 +225,7 @@ static unsigned CurrentTexture(void)
 		free(pixels);
 		if (!entry->texture) {
 			free(entry->snapshot);
+			entry->snapshot = NULL;
 			/* One refusal is worth reading and five thousand are not: a scene that the GPU will
 			 * not give textures to asks for the same ones on every frame, and the log is a file
 			 * on a memory card. The count that matters is in the [PERF] line. */
@@ -201,6 +243,7 @@ static unsigned CurrentTexture(void)
 		entry->h = h;
 		entry->color0 = p.color0;
 		entry->bytes = bytes;
+		entry->lastUse = binds;
 		cacheSize++;
 		cacheBytes += bytes;
 		decodes++;
@@ -327,7 +370,8 @@ extern "C" void VitaNativeG3FrameEnd(int wanted)
 extern "C" unsigned VitaNativeG3Polygons(void) { return polygonsThisFrame; }
 
 extern "C" void VitaNativeG3TextureStats(unsigned *entries, unsigned *bytes, unsigned *bindCount,
-                                         unsigned *hitCount, unsigned *decodeCount)
+                                         unsigned *hitCount, unsigned *decodeCount,
+                                         unsigned *evictionCount)
 {
 	if (entries)
 		*entries = cacheSize;
@@ -339,6 +383,8 @@ extern "C" void VitaNativeG3TextureStats(unsigned *entries, unsigned *bytes, uns
 		*hitCount = hits;
 	if (decodeCount)
 		*decodeCount = decodes;
+	if (evictionCount)
+		*evictionCount = evictions;
 }
 
 extern "C" void VitaNativeG3Release(void)

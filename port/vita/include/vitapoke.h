@@ -18,19 +18,30 @@
 
 /* Layout of the two DS panels on the Vita display.
  *
- * Both screens get an integer 2x scale (512x384) and neither is shrunk into a corner, which is what the
- * PSP layout had to do to fit 480x272. Stacking them needs 768 rows and there are only 544, so they sit
- * side by side with the touch screen on the right, where the hands are: 1024 columns is 64 too many, so
- * the pair is centred and the 32-column overlap is taken off the outer edges. The gap between them
- * lines up with the console's centre line.
+ * The two screens sit side by side, the touch screen on the right where the hands are. They cannot
+ * be stacked: two 2x screens need 768 rows and there are 544.
  *
- * This is the starting layout, not the final one: see docs/VITA.md. The renderer is the only reader,
- * so an alternative (one screen large with the other small, as the PSP had to do) is a change here
- * and nowhere else.
+ * Side by side, the scale is decided for us. 960 columns for two screens is 480 each, and 480 is
+ * 256 * 15/8 -- so each panel is 480x360, which is exactly 4:3, exactly what the DS's 256x192 is,
+ * and exactly half the display's width. Nothing is cropped, nothing overlaps, and 92 rows of black
+ * sit above and below.
+ *
+ * It is not an integer scale, which is the one thing wrong with it: at 15/8 some source pixels
+ * cover two display pixels and some cover one. The panels are therefore drawn with bilinear
+ * filtering, which turns that from a visible pattern of uneven columns into a slight softness. An
+ * integer 2x is what this layout tried first, and it does not fit: 1024 columns is 64 too many, and
+ * drawing both panels full size just puts the touch screen on top of the main screen's right-hand
+ * 64 columns, which is where the main screen's own interface often is. Losing a sixteenth of both
+ * screens to a sharper picture is the wrong trade for a game whose menus reach the edges.
+ *
+ * The renderer is the only reader of these, so an alternative layout (one screen large with the
+ * other small, as the PSP had to do) is a change here and nowhere else. If you change them,
+ * port/native-vita-render/render-vita.cpp has static assertions that keep the GPU layer's own copy
+ * of the numbers honest, and port/vita/input.c maps the front panel through the VITAPOKE_SUB_*
+ * rectangle, so touch follows automatically.
  */
-#define VITAPOKE_MAIN_SCALE 2
-#define VITAPOKE_MAIN_W (VITAPOKE_DS_W * VITAPOKE_MAIN_SCALE)
-#define VITAPOKE_MAIN_H (VITAPOKE_DS_H * VITAPOKE_MAIN_SCALE)
+#define VITAPOKE_MAIN_W (VITAPOKE_SCREEN_W / 2)
+#define VITAPOKE_MAIN_H (VITAPOKE_MAIN_W * VITAPOKE_DS_H / VITAPOKE_DS_W)
 #define VITAPOKE_MAIN_X 0
 #define VITAPOKE_MAIN_Y ((VITAPOKE_SCREEN_H - VITAPOKE_MAIN_H) / 2)
 #define VITAPOKE_SUB_W VITAPOKE_MAIN_W

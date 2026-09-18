@@ -31,7 +31,7 @@ extern unsigned VitaNativeRenderFrameCount(void);
 extern unsigned RenderStage(unsigned stage);
 extern unsigned VitaNativeG3Polygons(void);
 extern void VitaNativeG3TextureStats(unsigned *entries, unsigned *bytes, unsigned *binds,
-                                     unsigned *hits, unsigned *decodes);
+                                     unsigned *hits, unsigned *decodes, unsigned *evictions);
 extern void VitaNativeSoundAdvance(unsigned elapsedMicroseconds);
 extern void VitaNativeSoundOutputLine(char *buffer, unsigned length);
 extern void VitaNativeVBlankFrameComplete(void);
@@ -78,18 +78,18 @@ static void Report(void)
 {
 	unsigned long long window = VitaOS_Now() - frameStart;
 	unsigned presentUs = 0, software2DUs = 0;
-	unsigned entries = 0, bytes = 0, binds = 0, hits = 0, decodes = 0;
+	unsigned entries = 0, bytes = 0, binds = 0, hits = 0, decodes = 0, evictions = 0;
 	char sound[192];
 
 	VitaNativeRenderGetTimings(&presentUs, &software2DUs);
-	VitaNativeG3TextureStats(&entries, &bytes, &binds, &hits, &decodes);
+	VitaNativeG3TextureStats(&entries, &bytes, &binds, &hits, &decodes, &evictions);
 	VitaNativeMemLog("[PERF] frames=%u fps=%.2f game_us=%llu idle_us=%llu audio_us=%llu "
 	                 "render_us=%llu bind_us=%u compose_us=%u present_us=%u "
-	                 "polygons=%u tex=%u/%u binds=%u hits=%u decodes=%u",
+	                 "polygons=%u tex=%u/%u binds=%u hits=%u decodes=%u evictions=%u",
 	                 frames, window ? REPORT_FRAMES * 1000000.0 / window : 0.0,
 	                 gameUs / REPORT_FRAMES, idleUs / REPORT_FRAMES, audioUs / REPORT_FRAMES,
 	                 renderUs / REPORT_FRAMES, RenderStage(0), RenderStage(1), RenderStage(2),
-	                 VitaNativeG3Polygons(), entries, bytes, binds, hits, decodes);
+	                 VitaNativeG3Polygons(), entries, bytes, binds, hits, decodes, evictions);
 	sound[0] = 0;
 	VitaNativeSoundOutputLine(sound, sizeof sound);
 	if (sound[0])

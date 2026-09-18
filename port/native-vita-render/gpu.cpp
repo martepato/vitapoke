@@ -141,30 +141,42 @@ void VitaGpuPanelUpload(int index, const void *rgba)
 		return;
 	glBindTexture(GL_TEXTURE_2D, panel[index]);
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, DS_W, DS_H, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+	/* Bilinear, because the panel scale is 15/8 and not an integer: with GL_NEAREST the uneven
+	 * columns are a visible pattern down the screen. Set here rather than at creation because
+	 * vitaGL keeps filter state per texture and this is where the texture is certain to exist. */
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 }
 
-/* One panel: a textured quad in display pixels, showing the used 256x192 of a 256x256 texture. */
+/* One panel: a textured quad in display pixels, showing the used 256x192 of a 256x256 texture.
+ *
+ * The texture coordinates stop half a texel inside the used area. With bilinear filtering the
+ * outermost row and column would otherwise be averaged with whatever lies beyond -- the unused part
+ * of the 256x256 texture on two sides, and nothing defined on the others -- which shows up as a
+ * one-pixel seam along the edges of both panels. */
 static void DrawPanel(GLuint texture, int x, int y, int w, int h)
 {
-	const float u1 = (float)DS_W / 256.0f;
-	const float v1 = (float)DS_H / 256.0f;
+	const float half = 0.5f / 256.0f;
+	const float u0 = half, v0 = half;
+	const float u1 = (float)DS_W / 256.0f - half;
+	const float v1 = (float)DS_H / 256.0f - half;
 
 	glBindTexture(GL_TEXTURE_2D, texture);
 	glBegin(GL_TRIANGLE_STRIP);
-	glTexCoord2f(0.0f, 0.0f); glVertex3f((float)x, (float)y, 0.0f);
-	glTexCoord2f(u1, 0.0f);   glVertex3f((float)(x + w), (float)y, 0.0f);
-	glTexCoord2f(0.0f, v1);   glVertex3f((float)x, (float)(y + h), 0.0f);
-	glTexCoord2f(u1, v1);     glVertex3f((float)(x + w), (float)(y + h), 0.0f);
+	glTexCoord2f(u0, v0); glVertex3f((float)x, (float)y, 0.0f);
+	glTexCoord2f(u1, v0); glVertex3f((float)(x + w), (float)y, 0.0f);
+	glTexCoord2f(u0, v1); glVertex3f((float)x, (float)(y + h), 0.0f);
+	glTexCoord2f(u1, v1); glVertex3f((float)(x + w), (float)(y + h), 0.0f);
 	glEnd();
 }
 
 void VitaGpuPresent(int topIsEngineA)
 {
-	/* Both DS screens at twice their size, side by side, centred: see the layout note in
-	 * port/vita/include/vitapoke.h. The touch screen is on the right, under the player's hand,
-	 * and port/vita/input.c maps the front panel into that same rectangle. */
-	const int scale = 2;
-	const int w = DS_W * scale, h = DS_H * scale;
+	/* The two DS screens side by side, each filling half the width: 480x360, which is the DS's own
+	 * 4:3. See the layout note in port/vita/include/vitapoke.h for why this and not an integer 2x.
+	 * The touch screen is on the right, under the player's hand, and port/vita/input.c maps the
+	 * front panel into that same rectangle. */
+	const int w = SCREEN_W / 2, h = w * DS_H / DS_W;
 	const int y = (SCREEN_H - h) / 2;
 	unsigned top = topIsEngineA ? 0u : 1u;
 

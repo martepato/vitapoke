@@ -9,13 +9,16 @@ code is built for the Vita's ARM CPU and linked into a Vita application.
 > produces a VPK, and in the Vita3K emulator that VPK runs a real ROM: the game's startup, its
 > overlays, its opening -- the copyright screen, the GAME FREAK logo, the Pokémon logo, in colour, on
 > both screens -- and then the **title screen**. Press START and A and it goes through the main menu
-> and **starts a new game**, into Professor Rowan's introduction, and keeps running there: fourteen
-> thousand frames at 30 frames a second with no assertion and no crash, all composed by this port's
-> own renderer, with the DS sound engine producing real audio and the geometry engine producing real
-> 3D geometry.
-> What has *not* run is the GPU: presenting those screens and rasterising that geometry both need
-> `libshacccg.suprx`, which that emulator does not have. Nothing has run on hardware. See
-> [docs/VITA.md](docs/VITA.md) for exactly what is known and what is not.
+> and **starts a new game**, into Professor Rowan's introduction, where further presses advance his
+> dialogue. Thousands of frames at 22-30 frames a second with no assertion and no crash, composed by this port's
+> own renderer -- **drawn on the Vita's GPU**, both DS screens side by side, with the DS's 3D
+> rasterised there too and the DS sound engine producing real audio. Captured frames show Lucas and
+> Dawn running through the opening, the title screen's starter banner, and Professor Rowan's dialogue
+> box -- correct sprites, colours and fonts on both panels. They are not in this repository: they are
+> the game's own artwork, and nothing of the game belongs here.
+> What has *not* happened: nobody has heard the sound, and nothing has run on a real console --
+> Vita3K's GPU, timing and scheduling are all approximations. See [docs/VITA.md](docs/VITA.md) for
+> exactly what is known and what is not.
 >
 > vitapoke started as a port of [pspoke](https://github.com/IbrahimIrfan/pspoke), which does the same
 > thing for the PSP and is playable today. If you want to play rather than build, use that.
@@ -45,16 +48,16 @@ code is built for the Vita's ARM CPU and linked into a Vita application.
 | DS SDK replacement compiled for ARM | Works (270/271; the one failure is a module the build drops) |
 | The game's own 1016 C files compiled for ARM | Works (1016/1016) |
 | DS message queues, mutexes, the frame driver, the save file, the log | Works (compiles and links) |
-| Renderer: DS 2D composed in software, both screens on the display through vitaGL | The compositor runs the opening and the title screen; the vitaGL present has never run |
-| Renderer: DS 3D rasterised on the GPU | The game feeds it real geometry; nothing has rasterised it yet |
+| Renderer: DS 2D composed in software, both screens on the display through vitaGL | Works, and has been looked at: the opening, the title screen and Rowan's intro, in colour |
+| Renderer: DS 3D rasterised on the GPU | Works: up to 4240 polygons a frame, 123 textures cached, 98% hit rate |
 | Audio: the DS mixer through `sceAudioOut` | Works: 15 channels of real audio accepted by the output port, not yet heard through a speaker |
 | Link step: overlay layout, VPK packaging | Works |
 | Boots, plays the opening, reaches the title screen and starts a new game, from a real ROM | Works, in the Vita3K emulator: 14400 frames at 30 fps |
 | DS 2D renderer, against the real game | Works: text, sprites, palettes, both screens |
 | Stall watchdog, and a guarded allocator for finding heap bugs | Works (`port/vita/watchdog.c`, `make MALLOC_GUARD=1`) |
-| GPU path (presenting, and the DS's 3D) | Untested: needs `libshacccg.suprx` |
+| GPU path (presenting, and the DS's 3D) | Works in Vita3K with `libshacccg.suprx` installed; 22-30 fps under a software GL driver |
 | Buttons and touch | Buttons drive the real game through its menus; touch reads the real panel |
-| Playable | **Not yet**: a new game starts, but nothing has been drawn on a GPU, no sound has been heard, and nothing has run on hardware |
+| Playable | **Not yet**: a new game starts and draws correctly, but no sound has been heard and nothing has run on hardware |
 | SoulSilver build driver | Not written (its sources are here; only Platinum has a driver) |
 
 Only Platinum and SoulSilver, US releases, as in pspoke. Wi-Fi, DS wireless and microphone features are
@@ -161,7 +164,8 @@ two games.
 - The DS touch screen is **touched**. `TP_*` reads the front panel through `sceTouch`, so there is no
   cursor and no stylus mode — which is also why the game's own name-entry screen is kept, where the
   PSP build had to substitute the system keyboard.
-- Both DS screens are drawn at twice their size, side by side, with the touch screen on the right.
+- Both DS screens are drawn at 480x360 — exactly the DS's 4:3 and half the display each — side by
+  side, with the touch screen on the right. Neither screen is cropped or covered.
 
 Saves are normal 512 KB DS saves, movable to and from a DS emulator or cartridge dump.
 
@@ -169,11 +173,13 @@ Saves are normal 512 KB DS saves, movable to and from a DS emulator or cartridge
 
 The port is early, and the open pieces are large and fairly independent:
 
-- **the GPU path** — presenting the two panels and rasterising the DS's 3D have never run, because
-  the emulator used here has no shader compiler; anyone with `libshacccg.suprx` can settle both with
-  one `./build.sh boot --rom dump.nds --shacccg libshacccg.suprx`,
-- **the 3D path** — the game feeds it real geometry, but nothing has rasterised it
-  (`port/native-vita-render/g3_backend.cpp`; the depth convention is the first thing to check),
+- **running it on a console** — everything here was verified in Vita3K, whose GPU, timing and
+  scheduling are approximations; nothing has touched real hardware,
+- **the 3D path in a field or battle scene** — it rasterises, but the scenes reached so far are
+  mostly 2D with a 3D layer behind them, so the depth convention is still unconfirmed
+  (`port/native-vita-render/g3_backend.cpp`),
+- **sound out of a speaker** — the mixer produces real samples and `sceAudioOut` takes them; nobody
+  has heard them,
 - **performance** — the DS's 2D is composed on the CPU, and nothing has been measured on hardware;
   NEON in the 2D compositor and the sound mixer is the obvious next step,
 - **a SoulSilver build driver**, alongside Platinum's.

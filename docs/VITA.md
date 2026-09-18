@@ -537,17 +537,66 @@ things that only a running game could show:
 - **The heap is stable.** 17 MB in use at the second loop, `heap_high` equal to `heap_used`, no file
   open or read failing, the stack 8 KB into its megabyte.
 
-**What has still never run:** the GPU. `NO_GPU=1` is how everything above was checked, because
-Vita3K has no shader compiler unless the user puts `libshacccg.suprx` into it, and without a compiler
-vitaGL cannot make its fixed-function shaders (see the renderer section). So the panel present and
-the 3D rasteriser are unverified, and so is sound *coming out of a speaker* rather than being
-accepted by the output port. With the module in hand,
-`./build.sh boot --rom dump.nds --shacccg libshacccg.suprx` is the run that would settle the first
-two.
+**And the GPU path runs too.** With `libshacccg.suprx` in the emulator (from
+[AnimMouse/SceShaccCg](https://github.com/AnimMouse/SceShaccCg), which is the module as a firmware
+update carries it -- `SCE\0` header, SHA1 `12893f60...`), the whole renderer works: vitaGL brings up
+vitaShaRK, compiles its fixed-function shaders through the real compiler -- about 0.9 s on the first
+present, once, cached afterwards -- and from then on the two composed DS screens are textured quads
+on the GPU and the DS's 3D is rasterised there.
 
-Two things to look at first when it does run on a console: the dark red bands at the outer edges of
-both panels in some scenes, which may be the cutscene's own backdrop or a background's horizontal
-wrap, and the 3D depth convention in `G3SIM_AddVtx`.
+```
+[RENDER] ready: software 2D, two 256x192 panels drawn 480x360 side by side on a 960x544 display
+[FRAME] 1 ... render_us=926781 present_us=922170        <- the first present compiles the shaders
+[FRAME] 3 ... render_us=1118586 present_us=254          <- and never again
+[PERF] frames=7800 fps=29.63 render_us=9856 compose_us=6715 present_us=330 polygons=996
+       tex=123/1346816 binds=114083 hits=111874 decodes=123 evictions=0
+```
+
+7800 frames at 22-30 fps under a software OpenGL driver, present costing 300-500 µs, no assertion,
+no fatal. The texture cache holds 123 textures in 1.3 MB with a 98% hit rate and has never had to
+evict one.
+
+**And it looks right.** `tests/vita/boot.sh --shot 250:title.png` captures the X root window, which
+under Xvfb is exactly the Vita's 960x544 display, so the PNG is the frame a player would be looking
+at -- the only way to answer "does it look right" without a console. The captures show the opening
+cutscene's city skyline with Lucas running past it on one screen and Dawn past a town on the other,
+the title screen's starter banner, and Professor Rowan standing over his dialogue box reading
+"However, everyone just calls me the Pokémon Professor." Correct sprites, correct colours, correct
+font, both panels. The captures are not committed: they are the game's own artwork, and nothing of
+the game belongs in this repository.
+
+Two bugs only a drawn frame could have found, both fixed here:
+
+- **The panel layout put one screen on top of the other.** Two screens at an integer 2x are
+  512x384 each, and 1024 columns do not fit in 960: the touch screen was drawn over the main
+  screen's right-hand 64 columns, which is where the main screen's own interface often is. The
+  layout note claimed the overlap was "taken off the outer edges", which nothing did. Each panel is
+  now 480x360 -- half the width, and exactly the DS's 4:3 -- so both screens are whole and neither
+  covers the other. The cost is a 15/8 scale instead of 2x, which is why the panels are drawn with
+  bilinear filtering, and why their texture coordinates stop half a texel inside the used area:
+  without that, filtering pulls in the unused part of the 256x256 panel texture and leaves a
+  one-pixel seam down the edge of each screen.
+- **The texture cache filled and stopped admitting anything.** Sixteen slots, inherited from the
+  PSP build, and no eviction: the cache filled during the opening cutscene at 76 KB -- nowhere near
+  its byte budget, so the *slot count* was the constraint -- and every texture the title screen
+  then wanted was refused. It drew untextured for eighty thousand frames, and said so eighty
+  thousand times. It now has 256 slots, an 8 MB budget (more than the DS's 512 KB of texture VRAM
+  can expand to however it is sliced) and least-recently-used eviction, and the `[PERF]` line
+  carries an eviction count so a scene that needs more than it holds is visible rather than silent.
+
+One thing worth a second opinion from someone with a DS: on the title screen the starter banner
+shows as black silhouettes on one panel while the other shows it in colour, and which panel it is
+alternates frame to frame. That pattern is an animation, not a stuck blend -- a bug would sit on one
+screen -- and it matches the reveal effect the title screen does. It is the kind of thing only
+somebody who has played the game on hardware can confirm.
+
+**What has still never run:** a console. Sound is still only "accepted by `sceAudioOut`" rather than
+heard, and Vita3K's GPU, timing and scheduling are approximations, so the frame rate here is not a
+frame rate for a Vita.
+
+One thing to look at first on a console: the 3D depth convention in `G3SIM_AddVtx`. The drawn frames
+above do not settle it, because the scenes that reached the GPU are mostly 2D with a 3D layer behind
+them -- a field or a battle, where the depth ordering decides what is in front of what, is the test.
 
 ### Finding the bug that stopped it at thirty seconds
 
@@ -615,6 +664,12 @@ Worth writing down, because none of them is discoverable by reading:
   already waits for one twice per update -- that is its clock -- so a third wait would have run it at
   20 frames a second rather than 30, with nothing about the frame looking wrong. `vglWaitVblankStart(GL_FALSE)`
   in `VitaGpuInit` is what keeps the game's own pacing the only pacing.
+- **An empty shader in vitaGL's cache is a hang with no message.** vitaGL writes each compiled
+  shader to `ux0:data/shader_cache` and creates the file before it has anything to put in it, so a
+  run killed during that first compile leaves a zero-byte `.gxp` behind. Every later run then loads
+  it, gets nothing, and stops before its first frame -- with no error anywhere, because as far as
+  vitaGL is concerned the shader was cached. `tests/vita/boot.sh` deletes empty ones before every
+  run.
 - **A crash in `_malloc_r` is not a heap overflow.** It can be a pointer that was never a heap block
   at all: the DS's allocator hands out memory inside `s_HW_MAIN_MEM`, and one call to libc's `free`
   with one of those sends the allocator walking a chunk header made of DS data. The tools that catch
@@ -647,13 +702,13 @@ repeatably, in the project's own build.
 | DS message queues, mutexes, cache maintenance | Done (`port/vita/os_sync.c`), with the execution lock released across every blocking wait |
 | Frame driver, entry point, log, save file, owner profile | Done (`port/vita/frame.c`, `app_main.c`, `memlog.c`, `backup.c`, `owner_info.c`) |
 | Vertical blank | Done: the console's own, through `sceDisplayWaitVblankStart` (`port/vita/cadence.c`) |
-| Renderer: DS 2D composed in software, put on the display through vitaGL | The compositor runs the game's opening and title screen; the vitaGL present has never run (it needs `libshacccg.suprx`) |
-| Renderer: DS 3D rasterised on the GPU | The game feeds it real geometry (up to 3488 polygons a frame in the title sequence); nothing has rasterised it, so the depth convention is still unverified |
+| Renderer: DS 2D composed in software, put on the display through vitaGL | Works, drawn and seen: the opening cutscene, the title screen and Rowan's intro, in colour, both panels |
+| Renderer: DS 3D rasterised on the GPU | Runs: up to 4240 polygons a frame, 123 textures cached at a 98% hit rate. The depth convention still needs a field or battle scene to confirm |
 | Audio: the DS mixer's output through `sceAudioOut` | Working: 500k samples accepted, peak 21912/32767, 15 channels -- real audio from the ROM, not yet heard through a speaker |
 | Overlay data layout and the link | Done (`overlays/gen-link.py`, `INSERT AFTER .data`) |
 | VPK packaging | Done, and wired into `./build.sh game` |
 | No ROM needed to build | Done: the overlay table is read from the ROM at startup |
-| Screen layout: both DS screens at 2x, side by side | Done (`port/vita/include/vitapoke.h`, honoured by the renderer) |
+| Screen layout: both DS screens side by side, 480x360 each | Done (`port/vita/include/vitapoke.h`, honoured by the renderer and by touch); exactly the DS's 4:3, nothing cropped, nothing overlapping |
 | Touch input | Done: `TP_*` reads the front panel through `sceTouch`, no cursor and no stylus mode |
 | Buttons | Done, and verified on the running game: `SCE_CTRL_START` reaches the DS START bit (`./build.sh boot --press`) |
 | On-screen keyboard | Not needed: the game's own naming screen is used, because the Vita has a touchscreen |
@@ -662,6 +717,6 @@ repeatably, in the project's own build.
 | Does it boot? | Yes, in Vita3K, from a real ROM: startup, the opening cutscene, the title screen, and back round the attract loop -- 9000 frames at 30 fps with no assertion or fatal |
 | Does the DS 2D renderer work? | Yes: the copyright screen, the GAME FREAK logo, the Pokémon logo and the title screen, in colour, both screens |
 | Stall watchdog and heap diagnostics | Done (`port/vita/watchdog.c` always on, `heap_guard.c` under `MALLOC_GUARD=1`) |
-| Does the GPU path work? | **Unknown.** It needs `libshacccg.suprx`, which the emulator here does not have |
-| Does it play? | **It starts.** START and A take it from the title screen through the main menu into a new game, and it runs on there. Nothing has been drawn on a GPU, no sound has been heard, and nothing has run on hardware |
+| Does the GPU path work? | Yes, with `libshacccg.suprx` in the emulator: shaders compile on first present, both panels and the 3D layer are drawn, 22-30 fps under a software GL driver |
+| Does it play? | **It starts, drawn on the GPU.** START and A take it from the title screen through the main menu into a new game, and further presses advance Rowan's dialogue. No sound has been heard and nothing has run on hardware |
 | SoulSilver | Not started: its sources are here, only Platinum has a build driver |

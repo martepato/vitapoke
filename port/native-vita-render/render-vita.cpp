@@ -66,9 +66,13 @@ extern "C" void VitaNativeG3FrameEnd(int wanted);
  * These make the two disagreeing a build failure rather than a misplaced screen. */
 static_assert(VITAPOKE_SCREEN_W == 960 && VITAPOKE_SCREEN_H == 544, "gpu.cpp has the display size");
 static_assert(VITAPOKE_DS_W == 256 && VITAPOKE_DS_H == 192, "gpu.cpp has the DS screen size");
-static_assert(VITAPOKE_MAIN_SCALE == 2, "gpu.cpp doubles each panel");
+static_assert(VITAPOKE_MAIN_W == VITAPOKE_SCREEN_W / 2, "gpu.cpp gives each panel half the width");
+static_assert(VITAPOKE_MAIN_H == VITAPOKE_MAIN_W * VITAPOKE_DS_H / VITAPOKE_DS_W,
+              "gpu.cpp keeps each panel at the DS's aspect");
 static_assert(VITAPOKE_MAIN_X == 0 && VITAPOKE_SUB_X == VITAPOKE_SCREEN_W - VITAPOKE_SUB_W,
               "gpu.cpp puts the panels at the outer edges");
+static_assert(VITAPOKE_MAIN_X + VITAPOKE_MAIN_W <= VITAPOKE_SUB_X,
+              "the panels must not overlap: one would be drawn over the other");
 
 /* The two composed DS screens. 256 columns of stride to keep each row aligned, as the compositor
  * expects, and 256 rows so a texture upload can treat it as a square. */
@@ -185,8 +189,9 @@ extern "C" int VitaNativeRenderInit()
 	G3SIM_Identity();
 
 	initialized = true;
-	VitaNativeMemLog("[RENDER] ready: software 2D, two %dx%d panels at %dx on a %dx%d display",
-	                VITAPOKE_DS_W, VITAPOKE_DS_H, VITAPOKE_MAIN_SCALE,
+	VitaNativeMemLog("[RENDER] ready: software 2D, two %dx%d panels drawn %dx%d side by side "
+	                "on a %dx%d display",
+	                VITAPOKE_DS_W, VITAPOKE_DS_H, VITAPOKE_MAIN_W, VITAPOKE_MAIN_H,
 	                VITAPOKE_SCREEN_W, VITAPOKE_SCREEN_H);
 	return 0;
 }
