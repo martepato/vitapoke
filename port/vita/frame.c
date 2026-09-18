@@ -29,6 +29,7 @@ extern void VitaNativeRenderSetInput(unsigned keys, int touchMode, int down, int
 extern void VitaNativeRenderGetTimings(unsigned *presentUs, unsigned *software2DUs);
 extern unsigned VitaNativeRenderFrameCount(void);
 extern unsigned RenderStage(unsigned stage);
+extern void VitaNativeRenderComposedTake(unsigned *top, unsigned *bottom);
 extern unsigned VitaNativeG3Polygons(void);
 extern void VitaNativeG3TextureStats(unsigned *entries, unsigned *bytes, unsigned *binds,
                                      unsigned *hits, unsigned *decodes, unsigned *evictions);
@@ -83,14 +84,18 @@ static void Report(void)
 	unsigned long long window = VitaOS_Now() - frameStart;
 	unsigned presentUs = 0, software2DUs = 0;
 	unsigned entries = 0, bytes = 0, binds = 0, hits = 0, decodes = 0, evictions = 0;
+	/* Frames on which each screen was actually composed. Equal to the period means the frame caches
+	 * never hit; far below it means they are doing their job. */
+	unsigned composedTop = 0, composedBottom = 0;
 	char sound[192];
 
 	VitaNativeRenderGetTimings(&presentUs, &software2DUs);
+	VitaNativeRenderComposedTake(&composedTop, &composedBottom);
 	VitaNativeG3TextureStats(&entries, &bytes, &binds, &hits, &decodes, &evictions);
 	VitaNativeMemLog("[PERF] frames=%u fps=%.2f game_us=%llu idle_us=%llu audio_us=%llu "
 	                 "render_us=%llu bind_us=%llu compose_us=%llu upload_us=%llu present_us=%llu "
 	                 "other_us=%llu "
-	                 "polygons=%u tex=%u/%u binds=%u hits=%u decodes=%u evictions=%u",
+	                 "composed=%u/%u polygons=%u tex=%u/%u binds=%u hits=%u decodes=%u evictions=%u",
 	                 frames, window ? REPORT_FRAMES * 1000000.0 / window : 0.0,
 	                 gameUs / REPORT_FRAMES, idleUs / REPORT_FRAMES, audioUs / REPORT_FRAMES,
 	                 renderUs / REPORT_FRAMES, accBindUs / REPORT_FRAMES,
@@ -104,6 +109,7 @@ static void Report(void)
 	                     ? (renderUs - accBindUs - accComposeUs - accUploadUs - accPresentUs)
 	                           / REPORT_FRAMES
 	                     : 0ULL,
+	                 composedTop, composedBottom,
 	                 VitaNativeG3Polygons(), entries, bytes, binds, hits, decodes, evictions);
 	sound[0] = 0;
 	VitaNativeSoundOutputLine(sound, sizeof sound);

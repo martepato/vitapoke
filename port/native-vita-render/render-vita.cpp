@@ -86,6 +86,12 @@ static unsigned frames = 0, lastDraw = 0, previousPower = ~0u, grace = 0;
 static unsigned inputKeys = 0, oldKeys = 0;
 static int touchDown = 0, oldDown = 0, touchX = 128, touchY = 96, oldX = 128, oldY = 96;
 static unsigned bindUs = 0, drawUs = 0, uploadUs = 0, presentUs = 0, last2DUs = 0;
+/* The frame caches' state; see where they are consulted for what these are for. */
+#define CACHE_GIVE_UP 4
+#define CACHE_RETRY 64
+static unsigned topMisses, bottomMisses, topSkip, bottomSkip;
+/* How many times each screen was actually composed, for the frame report. */
+static unsigned composedA, composedB;
 
 /* The DS's memory-mapped graphics registers, as the port keeps them: an array the game writes
  * through the SDK, which this reads back to configure the compositor. */
@@ -111,8 +117,18 @@ static void bindRegisters(GPU2D::Unit &u, unsigned base)
 
 /* Point the compositor at the DS memory the game has been filling: palettes, OAM, and the VRAM banks
  * with whatever mapping the game has chosen this frame. */
-static void mapMemory()
+/* Copy the DS's palettes, OAM and VRAM mapping into the shape the compositor reads.
+ *
+ * dispA and dispB are the two engines' DISPCNT. The extended-palette buffers below are 80 KB of
+ * memset and up to 80 KB of copying, and they are only ever read -- and only ever compared by the
+ * frame caches -- when the engine that owns them has extended palettes turned on. Doing that work
+ * unconditionally cost milliseconds a frame on hardware in scenes that do not use the feature at
+ * all, which is most of them. */
+static void mapMemory(unsigned dispA, unsigned dispB)
 {
+	const bool extABg = (dispA & (1u << 30)) != 0, extAObj = (dispA & (1u << 31)) != 0;
+	const bool extBBg = (dispB & (1u << 30)) != 0, extBObj = (dispB & (1u << 31)) != 0;
+
 	memcpy(GPU::Palette, s_HW_BG_PLTT, 512);
 	memcpy(GPU::Palette + 512, s_HW_OBJ_PLTT, 512);
 	memcpy(GPU::Palette + 1024, s_HW_DB_BG_PLTT, 512);
@@ -125,24 +141,29 @@ static void mapMemory()
 		if ((*(volatile u8 *)(VitaNative_GfxRegisters + 0x240 + i) & 0x87) == 0x80)
 			GPU::VRAMMap_LCDC |= 1u << i;
 	}
-	memset(GPU::VRAMFlat_ABGExtPal, 0, 32768);
-	memset(GPU::VRAMFlat_BBGExtPal, 0, 32768);
-	memset(GPU::VRAMFlat_AOBJExtPal, 0, 8192);
-	memset(GPU::VRAMFlat_BOBJExtPal, 0, 8192);
-	unsigned e = *(volatile u8 *)(VitaNative_GfxRegisters + 0x244);
-	if ((e & 0x87) == 0x84)
+	if (extABg)
+		memset(GPU::VRAMFlat_ABGExtPal, 0, 32768);
+	if (extBBg)
+		memset(GPU::VRAMFlat_BBGExtPal, 0, 32768);
+	if (extAObj)
+		memset(GPU::VRAMFlat_AOBJExtPal, 0, 8192);
+	if (extBObj)
+		memset(GPU::VRAMFlat_BOBJExtPal, 0, 8192);
+	if (extABg && (*(volatile u8 *)(VitaNative_GfxRegisters + 0x244) & 0x87) == 0x84)
 		memcpy(GPU::VRAMFlat_ABGExtPal, s_HW_LCDC_VRAM + 0x80000, 32768);
-	for (unsigned i = 0; i < 2; i++) {
-		unsigned c = *(volatile u8 *)(VitaNative_GfxRegisters + 0x245 + i);
-		const u8 *src = s_HW_LCDC_VRAM + 0x90000 + i * 0x4000;
-		if ((c & 0x87) == 0x84)
-			memcpy(GPU::VRAMFlat_ABGExtPal + ((c & 8) ? 16384 : 0), src, 16384);
-		if ((c & 0x87) == 0x85)
-			memcpy(GPU::VRAMFlat_AOBJExtPal, src, 8192);
+	if (extABg || extAObj) {
+		for (unsigned i = 0; i < 2; i++) {
+			unsigned c = *(volatile u8 *)(VitaNative_GfxRegisters + 0x245 + i);
+			const u8 *src = s_HW_LCDC_VRAM + 0x90000 + i * 0x4000;
+			if (extABg && (c & 0x87) == 0x84)
+				memcpy(GPU::VRAMFlat_ABGExtPal + ((c & 8) ? 16384 : 0), src, 16384);
+			if (extAObj && (c & 0x87) == 0x85)
+				memcpy(GPU::VRAMFlat_AOBJExtPal, src, 8192);
+		}
 	}
-	if ((*(volatile u8 *)(VitaNative_GfxRegisters + 0x248) & 0x87) == 0x82)
+	if (extBBg && (*(volatile u8 *)(VitaNative_GfxRegisters + 0x248) & 0x87) == 0x82)
 		memcpy(GPU::VRAMFlat_BBGExtPal, s_HW_LCDC_VRAM + 0x98000, 32768);
-	if ((*(volatile u8 *)(VitaNative_GfxRegisters + 0x249) & 0x87) == 0x83)
+	if (extBObj && (*(volatile u8 *)(VitaNative_GfxRegisters + 0x249) & 0x87) == 0x83)
 		memcpy(GPU::VRAMFlat_BOBJExtPal, s_HW_LCDC_VRAM + 0xa0000, 8192);
 }
 
@@ -171,6 +192,8 @@ extern "C" int VitaNativeRenderInit()
 	frames = 0;
 	topCache.valid = false;
 	bottomCache.valid = false;
+	topMisses = bottomMisses = topSkip = bottomSkip = 0;
+	composedA = composedB = 0;
 	previousPower = ~0u;
 	grace = 0;
 	engineA.Reset();
@@ -248,10 +271,47 @@ static int Present()
 	oldX = touchX;
 	oldY = touchY;
 
-	mapMemory();
-	bool drawA = mappingChanged || !TopSame(power, a);
-	if (drawB && !mappingChanged && (power & 0x8000) && BottomSame(power))
+	mapMemory(a, b);
+
+	/* Whether to ask the frame caches at all.
+	 *
+	 * A cache hit skips composing a screen, which is the most expensive thing here. A cache miss
+	 * costs the comparison that discovered it -- up to 800 KB of VRAM for the top screen -- and then
+	 * the same again to refresh the snapshot, and it buys nothing. In a menu that is a fine trade,
+	 * because almost every frame hits. In an animated scene nothing ever matches and the whole cost
+	 * is waste: hardware showed it at nearly 6 ms a frame, a third of the render budget, on frames
+	 * that then composed anyway.
+	 *
+	 * So the caches are asked until they have missed CACHE_GIVE_UP times in a row, then left alone
+	 * for CACHE_RETRY frames before being given another chance. A scene that settles gets its cache
+	 * back within half a second; a scene that never settles pays the comparison on one frame in
+	 * sixty-four instead of every one. */
+	if (topSkip)
+		topSkip--;
+	if (bottomSkip)
+		bottomSkip--;
+	const bool consultTop = topSkip == 0;
+	const bool consultBottom = bottomSkip == 0;
+
+	bool drawA = mappingChanged || !consultTop || !TopSame(power, a);
+	if (drawB && !mappingChanged && consultBottom && (power & 0x8000) && BottomSame(power))
 		drawB = false;
+	if (!drawA)
+		topMisses = 0;
+	else if (consultTop && ++topMisses >= CACHE_GIVE_UP) {
+		topMisses = 0;
+		topSkip = CACHE_RETRY;
+	}
+	if (!drawB)
+		bottomMisses = 0;
+	else if (consultBottom && ++bottomMisses >= CACHE_GIVE_UP) {
+		bottomMisses = 0;
+		bottomSkip = CACHE_RETRY;
+	}
+	if (drawA)
+		composedA++;
+	if (drawB)
+		composedB++;
 	engineA.Enabled = (power & 2) != 0;
 	engineB.Enabled = (power & 512) != 0;
 	bindRegisters(engineA, 0);
@@ -275,9 +335,11 @@ static int Present()
 			renderer.DrawScanline(line, &engineB);
 		}
 	}
-	if (drawA)
+	/* Only refresh a snapshot that something is going to compare against: while a cache is being
+	 * left alone, copying into it would be the other half of the cost this is avoiding. */
+	if (drawA && consultTop)
 		SaveTop(power, a);
-	if (drawB)
+	if (drawB && consultBottom)
 		SaveBottom(power);
 	lastDraw = (drawA ? 1u : 0u) | (drawB ? 2u : 0u);
 	drawUs = (unsigned)(VitaOS_Now() - phase);
@@ -343,6 +405,17 @@ extern "C" void VitaNativeRenderGetTimings(unsigned *readbackUs, unsigned *softw
 		*readbackUs = presentUs;
 	if (software2DUs)
 		*software2DUs = last2DUs;
+}
+
+/* How many frames each screen was composed on since the last call, which says whether the frame
+ * caches are earning their keep: equal to the frames in the period means they never hit. */
+extern "C" void VitaNativeRenderComposedTake(unsigned *top, unsigned *bottom)
+{
+	if (top)
+		*top = composedA;
+	if (bottom)
+		*bottom = composedB;
+	composedA = composedB = 0;
 }
 
 /* 0 = binding the DS registers and memory, 1 = compositing, 2 = putting it on the screen,
