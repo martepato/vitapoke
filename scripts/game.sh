@@ -29,6 +29,21 @@ WORK="$ROOT/.work/vita"; T="$WORK/test_out"; LOGS="$WORK/logs"; U="$CACHE/upstre
 mkdir -p "$LOGS"
 done_(){ [ -f "$WORK/.stamp-$1" ]; }; mark(){ touch "$WORK/.stamp-$1"; }
 
+# Which toolchain built this tree.
+#
+# The stamps below skip finished phases on a rerun, and the object files they stand for live in the
+# staged tree. Neither records which compiler produced them, so somebody who builds with the pinned
+# toolchain and then sets VITASDK to their own install -- which the build supports, and which is the
+# whole reason this check exists -- would otherwise link objects from two different compilers and
+# find out at the oddest possible moment. The path, the compiler's version and the pinned GPU
+# libraries' revisions are enough to tell the two apart; when it changes, everything compiled goes.
+TOOLCHAIN_ID="$VITASDK|$("${TOOLBIN}gcc" -dumpversion 2>/dev/null || echo unknown)|$(cat "$VITASDK/.vitapoke-deps" 2>/dev/null || true)"
+if [ -f "$WORK/.toolchain" ] && [ "$(cat "$WORK/.toolchain")" != "$TOOLCHAIN_ID" ]; then
+  log "The toolchain changed since this tree was built: rebuilding it from the start"
+  rm -rf "$T" "$WORK"/.stamp-*
+fi
+printf '%s' "$TOOLCHAIN_ID" > "$WORK/.toolchain"
+
 if ! done_ base; then
   log "Fetching pinned upstream sources"
   "$ROOT/scripts/fetch.sh" libntr libntrsystem libntrdwc libntrwifi libvct metang pokeplatinum

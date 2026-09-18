@@ -16,3 +16,28 @@ tools, which include all of them. To install them yourself instead:
 
 The toolchain and source downloads live under `.cache/` in the project folder. To share them between checkouts or
 keep them somewhere else, set `VITAPOKE_CACHE=/path/to/cache`.
+
+## A VitaSDK you already have
+
+`./build.sh setup` downloads a pinned VitaSDK snapshot because that way a fresh clone builds with one
+command and everybody's build uses the same compiler. It is not the only way: set `VITASDK` to an
+install you already have and nothing is downloaded.
+
+```sh
+export VITASDK=/usr/local/vitasdk      # the directory with bin/arm-vita-eabi-gcc in it
+./build.sh setup
+./build.sh game
+```
+
+Keep `VITASDK` set for every `./build.sh` in that shell. A `game` build records which toolchain
+compiled the tree, so running one with a different toolchain than last time rebuilds from the start
+instead of mixing objects from two compilers — correct, but it costs the full build, so it is worth
+setting the variable in your shell profile rather than per command.
+
+`setup` installs three libraries at the revisions in `third_party.lock` into your install, plus two
+headers and the SDL2 declarations libntr refers to; it asks first, `VITAPOKE_ASSUME_YES=1` answers
+yes, and `VITAPOKE_SKIP_DEPS=1` keeps the libraries you already have. The table of exactly what goes
+where is in README.md under "Using a VitaSDK you already have".
+
+Setting `VITASDK` is also the answer if `./build.sh setup` tells you there is no prebuilt snapshot
+for your platform: install VitaSDK however your system prefers, then point `VITASDK` at it.

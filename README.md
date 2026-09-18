@@ -71,7 +71,9 @@ not ported and are not planned.
 
 You don't need to install VitaSDK or any libraries yourself. The build downloads a pinned
 [VitaSDK](https://vitasdk.org) snapshot (about 100 MB) into the project folder the first time, and builds
-its GPU dependencies there too.
+its GPU dependencies there too. Nothing is installed outside the project folder, and nothing on your
+system is changed. If you already have VitaSDK and would rather use it, see
+[Using a VitaSDK you already have](#using-a-vitasdk-you-already-have).
 
 On the console you also need **`libshacccg.suprx`** at `ur0:data/libshacccg.suprx`. It is Sony's
 shader compiler, taken from a firmware update, and most custom-firmware setups already have it: the
@@ -114,9 +116,58 @@ Commands:
 - `./build.sh check` — the checks that need no ROM and no emulator (a few seconds).
 - `./build.sh emu-check` — run the platform layer in the Vita3K emulator (downloads it; a few minutes).
 - `./build.sh clean` — remove the build output; downloads in `.cache` are kept.
-- `VITASDK=/path/to/vitasdk` uses an existing install instead of the downloaded one.
+- `VITASDK=/path/to/vitasdk` uses an existing install instead of the downloaded one — see below.
 
 Finished phases are skipped on a rerun via stamp files in `.work/vita/`; delete one to redo that phase.
+The tree also records which toolchain built it, so switching between your own VitaSDK and the pinned
+one rebuilds from scratch rather than linking objects from two different compilers.
+
+## Using a VitaSDK you already have
+
+The download exists so that a fresh clone builds with one command and everyone gets the same
+compiler. If you already have VitaSDK installed, point `VITASDK` at it and the build uses that
+instead:
+
+```sh
+export VITASDK=/usr/local/vitasdk      # the directory with bin/arm-vita-eabi-gcc in it
+./build.sh setup                       # names the toolchain, lists what it will install, asks
+./build.sh game
+```
+
+`VITASDK` is the same variable VitaSDK's own instructions tell you to export, so if you have used it
+before, this probably works with no change at all. Keep it set for every `./build.sh` command in that
+shell: the build decides which toolchain to use from the environment each time, and a `game` build
+that finds a different toolchain than last time starts over.
+
+**What `./build.sh setup` writes into your install.** The renderer needs three libraries at pinned
+revisions, and libntr needs some SDL2 declarations that VitaSDK does not ship. So setup installs,
+under your `$VITASDK`:
+
+| What | Where | Why |
+|---|---|---|
+| `libvitaGL.a`, `vitaGL.h` | `arm-vita-eabi/lib`, `.../include` | the renderer draws through it (pinned in `third_party.lock`) |
+| `libvitashark.a`, `vitashark.h` | same | vitaGL compiles its shaders on the console through it |
+| `libmathneon.a` | same | vitaGL needs it |
+| `shacccg_ext.h` | `arm-vita-eabi/include` | one declaration VitaSDK does not ship, so vitaShaRK builds |
+| `SDL2/*.h` | `arm-vita-eabi/include/SDL2` | the declarations libntr refers to; shims, not real SDL2 |
+
+It **replaces** any copies of those already there, at the revisions in `third_party.lock`. It lists
+all of it and asks before writing anything — answer no and nothing has been touched.
+`VITAPOKE_ASSUME_YES=1` answers yes, for a script or a CI job, and a run with nothing to do says so
+and writes nothing (two small stamp files, `.vitapoke-deps` and `.vitapoke-shims`, are how it knows).
+Nothing else in your install is touched, and the rest of the build writes only inside the project
+folder.
+
+If you would rather keep your own copies of those libraries,
+`VITAPOKE_SKIP_DEPS=1 ./build.sh setup` builds none of them. It still installs the SDL2 shims and
+`shacccg_ext.h`, because nothing compiles without those, and it leaves your `libvitaGL.a`,
+`libvitashark.a` and `libmathneon.a` — and their headers — exactly as they are. Then run
+`./build.sh check`: it compiles a program against every vitaGL feature the renderer uses, so a
+vitaGL that is too old or built differently fails there, with the missing feature named, rather than
+the game failing later.
+
+If your platform has no pinned snapshot (`./build.sh setup` says so and stops), this is the way to
+build: install VitaSDK however your system prefers and set `VITASDK`.
 
 ## Testing
 

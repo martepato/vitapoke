@@ -36,6 +36,17 @@ Everything in this section was built and linked with the pinned toolchain.
   `scripts/toolchain.sh` does for PSPDEV. It deliberately does not use `vdpm` or
   `bootstrap-vitasdk.sh`: both resolve a channel through `vitasdk.org`, which makes the compiler you get
   depend on when you ran the build, and the point of pinning is that it does not.
+
+  The download is the default, not the only way. Set `VITASDK` — the variable VitaSDK's own
+  instructions ask you to export — and every part of the build uses that install instead; it is also
+  the answer on a platform the snapshot does not cover, and `scripts/common.sh` decides once which
+  of the two is in play and passes it down, so a child step cannot mistake one for the other. What
+  `./build.sh setup` then writes into somebody's own install, and how to tell it not to, is in
+  README.md under "Using a VitaSDK you already have". Two things make switching safe rather than
+  merely possible: `scripts/deps.sh` asks before writing anything into an install it did not create,
+  and `scripts/game.sh` records the toolchain's identity beside its build stamps and throws the
+  compiled tree away when that changes — otherwise a build that started under one compiler would
+  quietly link objects from both.
 - **The GPU dependencies.** `scripts/deps.sh` builds vitaGL, vitaShaRK and math-neon at pinned
   commits into the toolchain. vitaGL is how the port puts the composed DS screens on the display, and
   vitaShaRK is how vitaGL compiles the shaders it writes for its own fixed-function pipeline: there is
@@ -693,7 +704,7 @@ repeatably, in the project's own build.
 
 | Piece | State |
 |---|---|
-| Pinned VitaSDK toolchain | Done (`scripts/toolchain.sh`) |
+| Pinned VitaSDK toolchain | Done (`scripts/toolchain.sh`), and optional: `VITASDK` uses an install you already have, with the build tree invalidated when the toolchain changes |
 | vitaGL, vitaShaRK and math-neon, pinned and built into the toolchain | Done (`scripts/deps.sh`); the renderer needs `libshacccg.suprx` at runtime |
 | Platform layer: arena, tick, interrupts, threads, alarms, touch, clock | Done; 27 runtime checks pass in Vita3K |
 | Build machinery: one tree, placeholders for the target's flags | Done (`scripts/stage.sh`, `port/build/vita.mak`) |
