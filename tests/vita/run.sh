@@ -72,5 +72,31 @@ check "vitaGL features" arm-vita-eabi-gcc "${CFLAGS[@]}" -std=gnu99 \
       -lSceSysmodule_stub -lSceShaccCg_stub_weak -lSceTouch_stub -lstdc++ -lm "${STUBS[@]}"
 check "vitaGL velf" vita-elf-create "$OUT/vgl.elf" "$OUT/vgl.velf"
 
+# The NEON 2D kernels against the scalar definitions they replace.
+#
+# port/native-render-opt/neon2d.h carries each of them twice so the two can be compared, and this is
+# where they are. It compiles for the console first, because that is the build that matters, and then
+# runs them.
+#
+# Running them needs a CPU with NEON. Where the host is not one, an ARM cross-compiler and qemu will
+# do -- they are not a requirement of the build, so this uses them when they are there and says which
+# way it went. Without either, the kernels still compile and the scalar path is compared against
+# itself, which checks the plumbing and nothing more; the line says so rather than claiming a pass it
+# did not earn.
+NEON_SRC="$ROOT/tests/vita/neon2d_check.c"
+NEON_INC=(-I"$ROOT/port/native-render-opt")
+check "neon 2D builds" arm-vita-eabi-gcc "${CFLAGS[@]}" -std=gnu99 "${NEON_INC[@]}" \
+      -o "$OUT/neon2d.elf" "$NEON_SRC" "${STUBS[@]}"
+
+QEMU_ARM="$(command -v qemu-arm || command -v qemu-arm-static || true)"
+if command -v arm-linux-gnueabihf-gcc >/dev/null && [ -n "$QEMU_ARM" ]; then
+  check "neon 2D vs scalar, ARM" bash -c "arm-linux-gnueabihf-gcc -O2 -static -march=armv7-a \
+        -mfpu=neon -mfloat-abi=hard -std=gnu99 ${NEON_INC[*]} -o '$OUT/neon2d.arm' '$NEON_SRC' &&
+        '$QEMU_ARM' '$OUT/neon2d.arm'"
+else
+  check "neon 2D vs scalar, host" bash -c "cc -O2 -std=gnu99 ${NEON_INC[*]} \
+        -o '$OUT/neon2d.host' '$NEON_SRC' && '$OUT/neon2d.host'"
+fi
+
 rm -f "$OUT/$$.log"
 log "$pass checks passed"

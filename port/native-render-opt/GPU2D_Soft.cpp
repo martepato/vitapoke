@@ -16,6 +16,16 @@
     with melonDS. If not, see http://www.gnu.org/licenses/.
 */
 
+/* The NEON kernels for the passes that are the same arithmetic on every pixel; the file says which
+ * passes those are and why the rest are not.
+ *
+ * They are written against uint32_t and called with libntr's u32, which on this toolchain is
+ * unsigned long: the same width, the same representation, a different type. The casts below are
+ * that and nothing else. See the include-order note at the top of render-vita.cpp for why two
+ * headers disagree about what a 32-bit unsigned is in the first place. */
+#include "neon2d.h"
+#define NEON_WORDS(p) reinterpret_cast<uint32_t*>(p)
+#define NEON_CONST_WORDS(p) reinterpret_cast<const uint32_t*>(p)
 #include "GPU2D_Soft.h"
 #include "native_gpu.h"
 
@@ -277,10 +287,7 @@ void SoftRenderer::DrawScanline(u32 line, Unit* unit)
     switch (dispmode)
     {
     case 0: // screen off
-        {
-            for (int i = 0; i < 256; i++)
-                dst[i] = 0x003F3F3F;
-        }
+        Neon2D_Fill(NEON_WORDS(dst), 0x003F3F3F, 256);
         break;
 
     case 1: // regular display
@@ -376,10 +383,7 @@ void SoftRenderer::DrawScanline(u32 line, Unit* unit)
             u32 factor = masterBrightness & 0x1F;
             if (factor > 16) factor = 16;
 
-            for (int i = 0; i < 256; i++)
-            {
-                dst[i] = ColorBrightnessUp(dst[i], factor, 0x0);
-            }
+            Neon2D_BrightnessUp(NEON_WORDS(dst), factor, 0x0, 256);
         }
         else if ((masterBrightness >> 14) == 2)
         {
@@ -387,10 +391,7 @@ void SoftRenderer::DrawScanline(u32 line, Unit* unit)
             u32 factor = masterBrightness & 0x1F;
             if (factor > 16) factor = 16;
 
-            for (int i = 0; i < 256; i++)
-            {
-                dst[i] = ColorBrightnessDown(dst[i], factor, 0xF);
-            }
+            Neon2D_BrightnessDown(NEON_WORDS(dst), factor, 0xF, 256);
         }
     }
 
@@ -399,17 +400,17 @@ void SoftRenderer::DrawScanline(u32 line, Unit* unit)
     // BGRA seems to be more compatible (Direct2D soft, cairo...)
 #ifdef MELONDS_PSP
     // Allegrex is a 32-bit CPU: packed u64 shifts need cross-word operations.
+#ifdef VITAPOKE_RGBA_OUTPUT
+    Neon2D_Output(NEON_WORDS(dst), NEON_CONST_WORDS(outputSrc), 256);
+#else
     for (int i = 0; i < 256; i++)
     {
         u32 c = outputSrc[i];
-#ifdef VITAPOKE_RGBA_OUTPUT
-        c = (c << 2) & 0x00FCFCFC;
-#else
         c = ((c << 18) & 0x00FC0000) | ((c << 2) & 0x0000FC00)
           | ((c >> 14) & 0x000000FC);
-#endif
         dst[i] = c | ((c & 0x00C0C0C0) >> 6) | 0xFF000000;
     }
+#endif
 #else
     for (int i = 0; i < 256; i+=2)
     {
@@ -814,9 +815,7 @@ void SoftRenderer::DrawScanline_BGOBJ(u32 line)
     // forced blank disables BG/OBJ compositing
     if (CurUnit->DispCnt & (1<<7))
     {
-        for (int i = 0; i < 256; i++)
-            BGOBJLine[i] = 0xFF3F3F3F;
-
+        Neon2D_Fill(NEON_WORDS(BGOBJLine), 0xFF3F3F3F, 256);
         return;
     }
 
@@ -830,10 +829,8 @@ void SoftRenderer::DrawScanline_BGOBJ(u32 line)
         u8 b = (backdrop & 0x7C00) >> 9;
 
         backdrop = r | (g << 8) | (b << 16) | 0x20000000;
-        backdrop |= (backdrop << 32);
 
-        for (int i = 0; i < 256; i+=2)
-            *(u64*)&BGOBJLine[i] = backdrop;
+        Neon2D_Fill(NEON_WORDS(BGOBJLine), (uint32_t)backdrop, 256);
     }
 
     if (CurUnit->DispCnt & 0xE000)
@@ -866,11 +863,27 @@ void SoftRenderer::DrawScanline_BGOBJ(u32 line)
         u32 blend = CurUnit->BlendCnt;
         if ((blend & 0x3F00) || ((blend & 0x00C0) && (blend & 0x003F)))
         {
-            for (int i = 0; i < 256; i++)
+            // ColorComposite is a decision tree and then one of five different sums, so there is
+            // nothing to vectorise in the sums without computing all five everywhere. What is worth
+            // vectorising is the question the tree opens with, because on most pixels of most frames
+            // the answer is that no effect applies and the composite is the identity -- the line
+            // already holds what it would be given. So the question is asked four pixels at a time
+            // and, where the answer is no for four in a row, nothing else happens to them.
+            //
+            // Neon2D_EffectMask is allowed to be generous: a pixel it says yes to goes through this
+            // same ColorComposite, which decides properly. It only has to never say no wrongly.
+            alignas(4) u8 effect[256];
+
+            Neon2D_EffectMask(effect, NEON_CONST_WORDS(BGOBJLine), NEON_CONST_WORDS(&BGOBJLine[256]),
+                              WindowMask, blend, 256);
+            for (int i = 0; i < 256; i += 4)
             {
-                u32 val1 = BGOBJLine[i];
-                u32 val2 = BGOBJLine[256+i];
-                BGOBJLine[i] = ColorComposite(i, val1, val2);
+                if (!*(const u32*)&effect[i]) continue;
+                for (int k = i; k < i + 4; k++)
+                {
+                    if (!effect[k]) continue;
+                    BGOBJLine[k] = ColorComposite(k, BGOBJLine[k], BGOBJLine[256+k]);
+                }
             }
         }
     }
@@ -1023,16 +1036,7 @@ void SoftRenderer::DrawBG_3D()
     }
     else
     {
-        for (i = 0; i < 256; i++)
-        {
-            u32 c = _3DLine[i];
-
-            if ((c >> 24) == 0) continue;
-            if (!(WindowMask[i] & 0x01)) continue;
-
-            BGOBJLine[i+256] = BGOBJLine[i];
-            BGOBJLine[i] = c | 0x40000000;
-        }
+        Neon2D_BG3D(NEON_WORDS(BGOBJLine), NEON_CONST_WORDS(_3DLine), WindowMask, 256);
     }
 }
 
