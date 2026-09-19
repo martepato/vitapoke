@@ -1053,22 +1053,6 @@ diff -ruN a/src/overlay_02_02248728.c b/src/overlay_02_02248728.c
  // clang-format on
  
  WIP_LOCAL void ov02_0224AB54(void) {
-@@ -3653,8 +3208,14 @@
- }
- 
- WIP_LOCAL BOOL PlayerStepEvent_RepelCounterDecrement(SaveData *saveData, FieldSystem *fieldSystem) {
--    u8 *repel = RoamerSave_GetRepelAddr(Save_Roamers_Get(saveData));
-+    RoamerSaveData *roamerSave = Save_Roamers_Get(saveData);
-+    u8 *repel = RoamerSave_GetRepelAddr(roamerSave);
-     if (*repel != 0) {
-+        // SS QoL repel re-use prompt: remember the Repel's full step count (100/200/250) in the
-+        // save's unused roamer byte so the wore-off prompt knows which kind to offer again.
-+        if (*repel > roamerSave->unk_66) {
-+            roamerSave->unk_66 = *repel;
-+        }
-         *repel = *repel - 1;
-         if (*repel == 0) {
-             StartMapSceneScript(fieldSystem, std_repel_wore_off, NULL);
 @@ -3823,53 +3384,8 @@
  }
  

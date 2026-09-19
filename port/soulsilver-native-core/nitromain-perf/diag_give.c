@@ -7,7 +7,7 @@
  *   TEACH_MOVES=<slot>:<move>[,<slot>:<move>...]  numeric move ids, e.g. 0:15,0:57,1:249,1:70
  *   GIVE_ITEM_IDS=<item>[:<count>][,...]      numeric item ids, e.g. 78:3,79:5,50:2
  *   SET_VARS=<var>:<value>[,...]              script vars (hex ok), e.g. 0x4079:2 opens the Ecruteak Gym
- *   GIVE_FRIENDSHIP=<n> (all party mons), REPEL_STEPS=<n> [REPEL_FULL=100|200|250] (SS QoL repel prompt tests)
+ *   GIVE_FRIENDSHIP=<n> (all party mons), REPEL_STEPS=<n> (the Repel step counter)
  *   SET_FLAGS=<flag>[,...] / CLEAR_FLAGS=<flag>[,...]  save flags (hex ok), e.g. CLEAR_FLAGS=0x1D9 shows Jasmine in her gym */
 #include <nitro.h>
 #include <stdio.h>
@@ -36,7 +36,7 @@ extern BOOL __real_HandleDaycareStep(Daycare *dayCare, Party *party, FieldSystem
 static void DiagGiveSpecies(Party *party, FieldSystem *fieldSystem)
 {
     if (Party_GetCount(party) < PARTY_SIZE) {
-        /* SS QoL OT fix: create through the game's GiveMon (same arguments as ScrCmd_GiveMon) so the mon has the
+        /* Create through the game's GiveMon (same arguments as ScrCmd_GiveMon) so the mon has the
          * player's OT name/ID; a bare CreateMon left the OT name unterminated and the Summary screen (forget-a-move)
          * hit GF_ASSERT in CopyU16ArrayToString via BufferBoxMonOTName. */
         GiveMon(HEAP_ID_FIELD3, FieldSystem_GetSaveData(fieldSystem), GIVE_SPECIES, GIVE_LEVEL, 0, 0, 0,
@@ -169,9 +169,8 @@ static void DiagRepel(FieldSystem *fieldSystem)
 {
     RoamerSaveData *roamerSave = Save_Roamers_Get(FieldSystem_GetSaveData(fieldSystem));
     *RoamerSave_GetRepelAddr(roamerSave) = REPEL_STEPS;
-    roamerSave->unk_66 = REPEL_FULL;
-    VitaNativeMemLog("[DIAG] repel steps %d full %d", REPEL_STEPS, REPEL_FULL);
-    printf("[DIAG] repel steps %d full %d\n", REPEL_STEPS, REPEL_FULL);
+    VitaNativeMemLog("[DIAG] repel steps %d", REPEL_STEPS);
+    printf("[DIAG] repel steps %d\n", REPEL_STEPS);
 }
 #endif
 

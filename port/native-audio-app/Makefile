@@ -59,12 +59,6 @@ LDFLAGS += $(shell cat overlays/constructors.flags)
 # other three are the SDK's dual-slot and wireless entry points, answered by the services below.
 LDFLAGS += -Wl,--wrap=ApplicationManager_New -Wl,--wrap=CTRDG_Init,--wrap=CommManager_InitializeSearchParty,--wrap=CommManager_GetAvailableConnections
 
-# TEST ONLY: QOL_TEST=<mode> links qol_test.o (Repel_UpdateSteps wrap, see qol_test.c).
-ifneq ($(QOL_TEST),)
-OBJS += qol_test.o
-CFLAGS += -DVITAPOKE_QOL_TEST_MODE=$(QOL_TEST)
-LDFLAGS += -Wl,--wrap=Repel_UpdateSteps
-endif
 # TEST ONLY: WARP_TO=<mapHeaderId>,<x>,<z>[,<dir>] links diag_warp.o (FieldTask_Run wrap).
 ifneq ($(WARP_TO),)
 OBJS += diag_warp.o

@@ -231,23 +231,6 @@ shown to work: two DS threads that interleave 248 times without it, and 0 times 
 Vita3K is not a console. Timing, scheduling and touch are approximations, so hardware is still the last
 word — but it catches a great deal first.
 
-## Quality of Life changes
-
-Carried over from pspoke and still wired into the build, though nothing runs them yet. All on by default;
-each can be turned off by setting its switch (`VITAPOKE_QOL_TRADE_EVOS=0`, for example) when building.
-They only change how the game behaves in RAM; your ROM and the save format are untouched.
-
-| Change | Switch |
-|---|---|
-| Instant text | `VITAPOKE_QOL_INSTANT_TEXT` |
-| Trade evolutions without trading | `VITAPOKE_QOL_TRADE_EVOS` |
-| "Use another?" prompt when a Repel wears off | `VITAPOKE_QOL_REPEL_PROMPT` |
-| HM moves can be forgotten | `VITAPOKE_QOL_FORGET_HMS` |
-| Cut, Rock Smash and Whirlpool buffed | `VITAPOKE_QOL_MOVE_BUFFS` |
-
-[docs/QOL.md](docs/QOL.md) has the details: every affected Pokémon and item, and what differs between the
-two games.
-
 ## Controls
 
 - The Vita's buttons map to the DS buttons (○ = A, ✕ = B, △ = X, □ = Y, L, R, START, SELECT, D-pad).

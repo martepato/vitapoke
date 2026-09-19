@@ -12,7 +12,6 @@
 | `port/vita/` | The Vita platform layer: the DS interfaces (`OS_*`, `TP_*`, `RTC_*`, `CARD_*`) implemented on psp2, plus the application itself. `os_core.c` (arena, tick, interrupts, the execution lock), `os_thread.c`, `os_alarm.c`, `os_sync.c` (message queues, mutexes, cache maintenance), `input.c` (pad and the real touchscreen), `cadence.c` (the console's vertical blank), `backup.c` (the 512 KB save), `owner_info.c` (the DS's firmware profile), `audio_out.c` (`sceAudioOut`), `frame.c` (the frame), `app_main.c` (the entry point), `memlog.c` (the log, the failure path, a working `abort`), `scene_log.c`, `sdl_sync.c` + `sdl2-shim/`, `watchdog.c` (the stall watchdog, the wait counters and the once-a-frame check of libc's free lists), `heap_guard.c` (a guarded allocator, only under `MALLOC_GUARD=1`), `shacccg_ext_stub.c` (a header VitaSDK does not ship, so vitaShaRK links). |
 | `port/native-vita-render/` | The renderer: `render-vita.cpp` (the frame and the DS 2D compositor), `g3_backend.cpp` (the DS's 3D, and its texture cache), `gpu.h`/`gpu.cpp` (everything asked of the GPU, and the only file that includes a GL header). |
 | `patches/` | Patches applied to the downloaded decompilations and to generated per-overlay source copies. |
-| `docs/QOL.md` | Every quality-of-life change, per Pokémon/item, and its build flag. |
 | `docs/INSTALL.md` | Prerequisites and per-platform install notes (macOS, Linux, Windows/WSL). |
 | `tests/` | Regression suite (`run.sh`), synthetic save fixtures, `tests/README.md`. |
 | `tests/vita/` | Vita checks that need no ROM: `run.sh` compiles and links the DS interfaces the platform layer implements, `vita3k.sh` runs the platform layer's runtime checks in the Vita3K emulator, `boot.sh` boots the built game there and prints its log, `emulator.sh` is the emulator bring-up both share, `make_probe_rom.py` writes a ROM-shaped file with no game data in it. |
@@ -111,7 +110,7 @@ and checks what it does rather than that it builds: thread serialisation under t
 rests on. It downloads the emulator and takes a couple of minutes.
 
 Diagnostic make variables still exist in the component Makefiles for test links -- Platinum
-`WARP_TO=<map>,<x>,<z>` (`diag_warp.c`) and `QOL_TEST`; SoulSilver `WARP_TO`, `NO_WILD`,
+`WARP_TO=<map>,<x>,<z>` (`diag_warp.c`); SoulSilver `WARP_TO`, `NO_WILD`,
 `GIVE_SPECIES`, `REPEL_STEPS` -- but nothing drives them yet: the scenario suite that used them replayed
 recorded input in a PSP emulator and went with that console. Rebuilding an equivalent on Vita3K is open
 work, and `tests/fixtures/` keeps the synthetic saves those scenarios started from.
