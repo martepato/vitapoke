@@ -269,7 +269,7 @@ static void EvictOldest(void)
 		if (cache[i].lastUse < cache[oldest].lastUse)
 			oldest = i;
 
-	VitaGpuTextureDestroy(cache[oldest].texture);
+	VitaGpuTextureDestroy(cache[oldest].texture, cache[oldest].bytes);
 	free(cache[oldest].snapshot);
 	cacheBytes -= cache[oldest].bytes;
 	/* Fill the hole with the last entry: the cache is searched linearly and has no order of its
@@ -471,8 +471,22 @@ extern "C" void G3SIM_AddVtx(G3SIM_Vertex_t *v)
 		return;
 	}
 	out = &vertices[count++];
-	out->u = v->s * s_texImageParam.textureSSize;
-	out->v = v->t * s_texImageParam.textureTSize;
+	/* Straight through, because they are already what the GPU wants.
+	 *
+	 * The geometry engine's texture coordinates are in texels, and the simulator has already divided
+	 * them by the texture's size when it built this vertex -- G3SIM_Vtx does it, and the desktop
+	 * simulator hands the result to its shader as it stands, because a sampler takes a fraction of
+	 * the texture and not a texel count. Multiplying the size back in here turned every coordinate
+	 * into a texel index and then gave it to glTexCoordPointer, which reads a fraction: a quad that
+	 * should have shown one copy of a 64-pixel texture asked for sixty-four of them, and got them,
+	 * because the DS's textures mostly repeat.
+	 *
+	 * On screen that is a recognisable shape in roughly the right colours with a fine stripe through
+	 * everything, which is what the field and the title screen's Giratina both looked like once they
+	 * were drawn at all. Coordinates past 1.0 still mean what they meant; the wrap mode the DS asked
+	 * for is set from repeatS and repeatT at the draw. */
+	out->u = v->s;
+	out->v = v->t;
 	out->r = v->r;
 	out->g = v->g;
 	out->b = v->b;
@@ -622,7 +636,7 @@ extern "C" void VitaNativeG3TextureStats(unsigned *entries, unsigned *bytes, uns
 extern "C" void VitaNativeG3Release(void)
 {
 	for (unsigned i = 0; i < cacheSize; i++) {
-		VitaGpuTextureDestroy(cache[i].texture);
+		VitaGpuTextureDestroy(cache[i].texture, cache[i].bytes);
 		free(cache[i].snapshot);
 	}
 	cacheSize = 0;

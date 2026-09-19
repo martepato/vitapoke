@@ -53,7 +53,7 @@ void VitaGpuFrameEnd3D(void *rgbaOut);
 /* A decoded DS texture. `rgba` is w*h pixels of R,G,B,A bytes and is not kept. Returns 0 on
  * failure. */
 unsigned VitaGpuTextureCreate(unsigned w, unsigned h, const void *rgba);
-void VitaGpuTextureDestroy(unsigned texture);
+void VitaGpuTextureDestroy(unsigned texture, unsigned textureSize);
 
 /* The DS's per-polygon state, which its geometry engine sets between draws. Culling is which face
  * is discarded; the depth comparison is the DS's own, and "less" versus "less or equal" decides

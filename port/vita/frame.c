@@ -104,7 +104,8 @@ static void Report(void)
 	VitaNativeMemLog("[PERF] frames=%u fps=%.2f game_us=%llu idle_us=%llu audio_us=%llu "
 	                 "render_us=%llu bind_us=%llu compose_us=%llu upload_us=%llu present_us=%llu "
 	                 "wait_us=%llu other_us=%llu "
-	                 "vblanks=%u.%02u composed=%u/%u polygons=%u dropped=%u/%u tex=%u/%u binds=%u hits=%u decodes=%u evictions=%u",
+	                 "vblanks=%u.%02u composed=%u/%u polygons=%u dropped=%u/%u layer=%u/%u "
+	                 "tex=%u/%u binds=%u hits=%u decodes=%u evictions=%u",
 	                 frames, window ? REPORT_FRAMES * 1000000.0 / window : 0.0,
 	                 gameUs / REPORT_FRAMES, idleUs / REPORT_FRAMES, audioUs / REPORT_FRAMES,
 	                 renderUs / REPORT_FRAMES, accBindUs / REPORT_FRAMES,

@@ -318,7 +318,7 @@ unsigned VitaGpuTextureCreate(unsigned w, unsigned h, const void *rgba)
 	return texture;
 }
 
-void VitaGpuTextureDestroy(unsigned texture)
+void VitaGpuTextureDestroy(unsigned texture, unsigned textureSize)
 {
 	GLuint name = texture;
 
@@ -327,6 +327,11 @@ void VitaGpuTextureDestroy(unsigned texture)
 	glDeleteTextures(1, &name);
 	if (textureBlocks)
 		textureBlocks--;
+	/* The count came off and the bytes did not, so the gpu= figure in the log grew by the size of
+	 * every texture the cache ever evicted and never came back down. It is a report of what is held,
+	 * not of what has been asked for. */
+	if (textureBytes >= textureSize)
+		textureBytes -= textureSize;
 }
 
 void VitaGpuDrawTriangles(unsigned texture, int repeatS, int repeatT,
