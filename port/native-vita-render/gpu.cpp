@@ -32,8 +32,10 @@
 
 extern "C" void VitaNativeMemLog(const char *, ...);
 
-static GLuint panel[4];          /* two per DS screen, written alternately */
-static unsigned panelFace[2];    /* which of each screen's two holds the current picture */
+/* PANEL_FACES per DS screen, written in turn; see the note where they are created. */
+#define PANEL_FACES 3
+static GLuint panel[PANEL_FACES * 2];
+static unsigned panelFace[2];    /* which of each screen's faces holds the current picture */
 static GLuint frameBuffer, colorTexture, depthBuffer;
 static int ready, targetReady;
 static unsigned textureBytes, textureHigh, textureBlocks;
@@ -102,15 +104,22 @@ int VitaGpuInit(void)
 		return -1;
 	}
 
-	/* Two textures per panel, used alternately.
+	/* Three textures per panel, used in turn.
 	 *
 	 * A panel is uploaded every frame with glTexSubImage2D and then sampled by that frame's draw.
 	 * With one texture per panel the next frame's upload has to wait for the GPU to finish reading
 	 * the previous frame's -- a stall the console pays in full, measured at several milliseconds a
-	 * frame on hardware where the emulator showed none. Alternating means the upload always writes
-	 * the texture the GPU is not reading. */
-	glGenTextures(4, panel);
-	for (unsigned i = 0; i < 4; i++) {
+	 * frame on hardware where the emulator showed none. Cycling means the upload always writes a
+	 * texture the GPU is not reading.
+	 *
+	 * Three, not two, because vitaGL is built without its texture orphaning (see the note in
+	 * scripts/deps.sh) and this cycle is now what makes that safe. vitaGL renders into three display
+	 * buffers, so it lets two frames be pending at once, and with two faces a frame's upload could
+	 * land on a texture the frame before last was still being read from. Three faces means the
+	 * texture written now was last drawn three frames ago, which is one more than can be in flight.
+	 * Anyone raising vitaGL's display buffer count has to raise this with it. */
+	glGenTextures(PANEL_FACES * 2, panel);
+	for (unsigned i = 0; i < PANEL_FACES * 2; i++) {
 		glBindTexture(GL_TEXTURE_2D, panel[i]);
 		/* Nearest, not linear. A DS pixel doubled is a DS pixel; smoothing would blur text drawn
 		 * to be read one pixel per pixel. */
@@ -123,8 +132,8 @@ int VitaGpuInit(void)
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, DS_W, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 	}
-	textureBytes = textureHigh = 4u * DS_W * 256u * 4u;
-	textureBlocks = 4;
+	textureBytes = textureHigh = PANEL_FACES * 2u * DS_W * 256u * 4u;
+	textureBlocks = PANEL_FACES * 2;
 	ready = 1;
 	return 0;
 }
@@ -139,7 +148,7 @@ void VitaGpuShutdown(void)
 		glDeleteTextures(1, &colorTexture);
 		targetReady = 0;
 	}
-	glDeleteTextures(4, panel);
+	glDeleteTextures(PANEL_FACES * 2, panel);
 	/* vitaGL has no teardown: it holds its memory and its GXM context for the life of the process,
 	 * which on a console is until the application exits and the kernel takes everything back. So
 	 * the textures are given up and the rest is left, rather than pretending to release it. */
@@ -153,8 +162,8 @@ void VitaGpuPanelUpload(int index, const void *rgba)
 	/* Into the copy the GPU is not reading; see the note where these are created. A panel that is
 	 * not uploaded this frame keeps whichever copy it last wrote, which is why the index to draw
 	 * from is remembered per panel rather than derived from the frame number. */
-	panelFace[index] ^= 1u;
-	glBindTexture(GL_TEXTURE_2D, panel[index * 2 + panelFace[index]]);
+	panelFace[index] = (panelFace[index] + 1u) % PANEL_FACES;
+	glBindTexture(GL_TEXTURE_2D, panel[index * PANEL_FACES + panelFace[index]]);
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, DS_W, DS_H, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
 }
 
@@ -207,8 +216,8 @@ void VitaGpuPresent(int topIsEngineA)
 	glEnable(GL_TEXTURE_2D);
 	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-	DrawPanel(panel[top * 2 + panelFace[top]], 0, y, w, h);
-	DrawPanel(panel[(1 - top) * 2 + panelFace[1 - top]], SCREEN_W - w, y, w, h);
+	DrawPanel(panel[top * PANEL_FACES + panelFace[top]], 0, y, w, h);
+	DrawPanel(panel[(1 - top) * PANEL_FACES + panelFace[1 - top]], SCREEN_W - w, y, w, h);
 	glDisable(GL_TEXTURE_2D);
 	/* GL_FALSE: the game paces itself on the display's vertical blank in port/vita/cadence.c, and
 	 * waiting for another one here would halve the frame rate. */

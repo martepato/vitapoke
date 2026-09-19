@@ -36,7 +36,10 @@ SHIMSTAMP="$VITASDK/.vitapoke-shims"
 HEADERS="$(cat "$ROOT"/port/vita/sdl2-shim/SDL2/*.h "$ROOT/port/vita/shacccg_ext.h" |
            if command -v sha1sum >/dev/null; then sha1sum; else shasum -a 1; fi | cut -d' ' -f1)"
 LIBS="$(awk '$1=="vitaGL"||$1=="math-neon"||$1=="vitaShaRK"{printf "%s=%s ", $1, $3}' "$ROOT/third_party.lock")"
-WANT="$LIBS headers=$HEADERS"
+# The vitaGL build flags are in the stamp too: they change the library without changing its revision,
+# and an install carrying the old ones would otherwise look up to date.
+VGLFLAGS="NO_DEBUG NO_SPLASHSCREEN TEXTURES_SPEEDHACK"
+WANT="$LIBS headers=$HEADERS vitagl_flags=$VGLFLAGS"
 
 install_headers() {
   install -d "$VITASDK/arm-vita-eabi/include/SDL2"
@@ -97,7 +100,21 @@ step vita-shark        make -C "$U/vitaShaRK" -j"$(nproc 2>/dev/null || echo 4)"
 step vita-math-neon    make -C "$U/math-neon" -j"$(nproc 2>/dev/null || echo 4)" install
 # NO_DEBUG drops vitaGL's error-string paths; NO_SPLASHSCREEN drops the startup logo. Neither belongs in
 # a build that boots straight into a game.
-step vita-gl           make -C "$U/vitaGL" -j"$(nproc 2>/dev/null || echo 4)" NO_DEBUG=1 NO_SPLASHSCREEN=1 install
+#
+# TEXTURES_SPEEDHACK turns off vitaGL's automatic texture orphaning, and the name undersells what it
+# costs to leave on. Without it, every glTexSubImage2D on a texture drawn in the last four frames
+# allocates a fresh buffer the size of the whole texture, copies the old contents into it, frees the
+# old one and re-points the GXM texture -- before it copies the pixels the caller asked it to copy.
+# The renderer uploads a 256x256 panel every frame and every one of those uploads paid for it: better
+# than four milliseconds of a thirty-eight millisecond frame, spent copying a texture to itself.
+#
+# What the orphaning protects against is writing a texture the GPU has not finished reading. The
+# renderer does not need protecting: it cycles each panel through as many textures as vitaGL has
+# display buffers, so the one being written is never one the GPU can still be reading. See the note
+# where they are created in port/native-vita-render/gpu.cpp. It is a hack only for a program that
+# does not do that.
+step vita-gl           make -C "$U/vitaGL" -j"$(nproc 2>/dev/null || echo 4)" NO_DEBUG=1 NO_SPLASHSCREEN=1 \
+                            TEXTURES_SPEEDHACK=1 install
 
 printf '%s' "$WANT" > "$STAMP"
 echo "    vitaGL, vitaShaRK and math-neon installed in $VITASDK"
