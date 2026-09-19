@@ -185,8 +185,16 @@ rm -f "$A/vitapoke-platinum.vpk"
 # whether a slow frame is the game's own code, the map renderer, or the 3D command path.
 GAME_PROF=1
 [ -n "${VITAPOKE_MALLOC_GUARD:-}" ] && GAME_PROF=
+# VITAPOKE_REPORT_FRAMES=N shortens the [PERF]/[GPROF] period from 600 frames. 600 is twenty
+# seconds of play and the right period for a log somebody sends back from a console; for a run under
+# tests/vita/town.sh, which measures a scene that is standing still, it is twenty seconds of waiting
+# per number. 150 is the useful setting there.
+EXTRA=""
+[ -n "${VITAPOKE_REPORT_FRAMES:-}" ] &&
+  EXTRA="-DVITAPOKE_REPORT_FRAMES=${VITAPOKE_REPORT_FRAMES}"
 step link         make -C "$A" vitapoke-platinum.vpk ASSET_DIR="$ASSETS" \
-                       MALLOC_GUARD="${VITAPOKE_MALLOC_GUARD:-}" GAME_PROF="$GAME_PROF"
+                       MALLOC_GUARD="${VITAPOKE_MALLOC_GUARD:-}" GAME_PROF="$GAME_PROF" \
+                       EXTRA_CFLAGS="$EXTRA"
 OUT="$ROOT/dist"; mkdir -p "$OUT"
 cp -f "$A/vitapoke-platinum.vpk" "$OUT/vitapoke-platinum.vpk"
 if [ -n "$ASSETS" ]; then
