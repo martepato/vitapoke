@@ -1648,6 +1648,16 @@ void G3SIM_Vtx(s16 x, s16 y, s16 z)
     return;
 }
 
+/* Polygons the simulator threw away rather than handed to the renderer, since the two reasons it
+ * has for doing so are both approximations and both have been wrong. A scene that looks like it is
+ * missing geometry is either dropping it here or never producing it, and the log should say which.
+ *
+ * droppedW: a vertex at W = 0, which is a polygon edge-on to the camera and genuinely undrawable.
+ * droppedFar: a vertex that came out of the perspective divide far outside the screen, which is
+ * this simulator's stand-in for the near-plane clipping it does not do -- a polygon crossing the
+ * camera plane produces one, and a real DS would have cut the polygon rather than dropped it. */
+extern "C" { extern unsigned g3DroppedW, g3DroppedFar; }
+
 void G3SIM_SubmitPolygon(G3SIM_FxVtx_t * fxVerts, int numVerts) {
     G3SIM_Vertex_t glVerts[6];
     u8 addPolygon = TRUE;
@@ -1688,11 +1698,27 @@ void G3SIM_SubmitPolygon(G3SIM_FxVtx_t * fxVerts, int numVerts) {
     }
 
     // Get the W size and remove the polygon if W is 0
+    //
+    // numVerts, not 4, and this is not a tidy-up. A triangle has three vertices; s_g3PolygonVerts,
+    // which every caller passes, is a four-element global. The fourth slot a triangle never writes
+    // holds whatever the last quad left there -- and, until a quad has been drawn at all, the zero
+    // it was initialised with. So "this polygon has a vertex at W = 0, throw it away" was being
+    // decided by a vertex the polygon does not have, and on a zero it threw away every triangle.
+    //
+    // On the console that is the overworld drawing its quads and almost nothing else: the ground
+    // and the walls, which are quads, with the models on top of them -- the player, the people, the
+    // props, all triangle strips -- missing, and a stale W in that fourth slot deciding from one
+    // scene to the next which of them came back. It reads as a screen that is mostly black with a
+    // few textures in it.
+    //
+    // wsize is computed in the same loop and so changes with it, which is also the correction: a
+    // triangle's W scale has no business being set by a vertex from the quad before it.
     u32 wsize = 0;
-    for(int i=0; i < 4; i++) {
+    for(int i=0; i < numVerts; i++) {
         G3SIM_FxVtx_t * curVtx = &fxVerts[i];
         u32 w = curVtx->w;
         if(w == 0){
+            if (addPolygon) g3DroppedW++;
             addPolygon = FALSE;
         }
         while ((w >> wsize) && (wsize < 32)) {
@@ -1755,9 +1781,11 @@ void G3SIM_SubmitPolygon(G3SIM_FxVtx_t * fxVerts, int numVerts) {
     // TODO: This is a HACK and we should eventually remove it
     for(int i=0; i < numFinalVerts; i++) {
         if(glVerts[i].x > 50.0f || glVerts[i].x < -50.0f) {
+            if (addPolygon) g3DroppedFar++;
             addPolygon = FALSE;
         }
         if(glVerts[i].y > 50.0f || glVerts[i].y < -50.0f) {
+            if (addPolygon) g3DroppedFar++;
             addPolygon = FALSE;
         }
     }

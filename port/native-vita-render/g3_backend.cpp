@@ -35,6 +35,7 @@
 
 #include "../native-render-opt/native_gpu.h"
 #include "gpu.h"
+#include "neon2d.h"
 
 #include <simulator/g3_handler.h>
 #include <simulator/g3_draw.h>
@@ -486,16 +487,9 @@ extern "C" void G3SIM_FlushArray()
  * the DS's five-bit alpha above them. The read from the GPU is plain 8-bit RGBA, so it is converted
  * on the way in. */
 static u32 readback[256 * 192];
-static u32 alphaTo5[256];
-static int tablesReady;
 
 extern "C" void VitaNativeG3FrameBegin(void)
 {
-	if (!tablesReady) {
-		for (unsigned i = 0; i < 256; i++)
-			alphaTo5[i] = ((i * 31 + 127) / 255) << 24;
-		tablesReady = 1;
-	}
 	polygonsThisFrame = 0;
 	count = 0;
 	frameOpen = 1;
@@ -521,13 +515,26 @@ extern "C" void VitaNativeG3FrameEnd(int wanted)
 	VitaGpuFrameEnd3D(wanted ? readback : NULL);
 	if (!wanted)
 		return;
-	for (unsigned i = 0; i < 256 * 192; i++) {
-		u32 c = readback[i];
-		GPU3D::NativeFrame[i] = ((c >> 2) & 0x003f3f3fu) | alphaTo5[c >> 24];
-	}
+	/* 49,152 pixels, on the game thread, on every frame the field and battles draw: worth doing four
+	 * at a time. The kernel and the table below compute the same thing; see neon2d.h. */
+	Neon2D_Readback(reinterpret_cast<uint32_t *>(GPU3D::NativeFrame),
+	                reinterpret_cast<const uint32_t *>(readback), 256 * 192);
 }
 
 extern "C" unsigned VitaNativeG3Polygons(void) { return polygonsThisFrame; }
+
+/* Set by G3SIM_SubmitPolygon in the simulator front end; see the note there. */
+extern "C" unsigned g3DroppedW, g3DroppedFar;
+unsigned g3DroppedW, g3DroppedFar;
+
+extern "C" void VitaNativeG3DroppedTake(unsigned *atW, unsigned *offScreen)
+{
+	if (atW)
+		*atW = g3DroppedW;
+	if (offScreen)
+		*offScreen = g3DroppedFar;
+	g3DroppedW = g3DroppedFar = 0;
+}
 
 extern "C" void VitaNativeG3TextureStats(unsigned *entries, unsigned *bytes, unsigned *bindCount,
                                          unsigned *hitCount, unsigned *decodeCount,
