@@ -272,5 +272,50 @@ void *__wrap_memalign(size_t alignment, size_t size)
 	return payload;
 }
 
+/* Where the live memory came from: the eight call sites holding the most, biggest first.
+ *
+ * This is how a leak gets a name. The guard already records which address asked for every block, so
+ * the live list only has to be walked and totalled by caller. Run the result through
+ * arm-vita-eabi-addr2line against the .elf to turn each address into a function. */
+void VitaNativeHeapGuardReport(void)
+{
+	struct { const void *caller; unsigned bytes, count; } top[8];
+	unsigned found = 0;
+
+	memset(top, 0, sizeof top);
+	Lock();
+	for (struct Block *b = live; b; b = b->next) {
+		unsigned i;
+
+		for (i = 0; i < found; i++)
+			if (top[i].caller == b->caller)
+				break;
+		if (i == found) {
+			/* Not seen yet: take a free slot, or displace the smallest if it is bigger. */
+			if (found < 8)
+				i = found++;
+			else {
+				unsigned smallest = 0;
+				for (unsigned j = 1; j < 8; j++)
+					if (top[j].bytes < top[smallest].bytes)
+						smallest = j;
+				if (top[smallest].bytes >= b->size)
+					continue;
+				i = smallest;
+				top[i].bytes = top[i].count = 0;
+			}
+			top[i].caller = b->caller;
+		}
+		top[i].bytes += b->size;
+		top[i].count++;
+	}
+	Unlock();
+
+	VitaNativeMemLog("[HEAP] %u live blocks; the callers holding the most:", blocks);
+	for (unsigned i = 0; i < found; i++)
+		VitaNativeMemLog("[HEAP]   %p  %u bytes in %u blocks", top[i].caller, top[i].bytes,
+		                 top[i].count);
+}
+
 /* For the memory report: how many blocks the guard is holding. */
 unsigned VitaNativeHeapGuardBlocks(void) { return blocks; }

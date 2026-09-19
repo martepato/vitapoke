@@ -180,6 +180,14 @@ void VitaNativeFrameComplete(void)
 	}
 
 	VitaNativeHeapCheck(frames);
+#ifdef VITAPOKE_HEAP_GUARD
+	/* Guarded builds only: name the call sites holding the most memory, often enough to watch one
+	 * of them grow. */
+	if (frames % 300 == 0) {
+		extern void VitaNativeHeapGuardReport(void);
+		VitaNativeHeapGuardReport();
+	}
+#endif
 	if (frames % 10 == 0)
 		VitaNativeMemPoll();
 	if (frames % REPORT_FRAMES == 0)

@@ -1,0 +1,44 @@
+--- a/libraries/g3d/src/gecom.c
++++ b/libraries/g3d/src/gecom.c
+@@ -160,16 +160,31 @@
+     }
+ 
+     #ifdef SDK_PORT
+-    draw_msg_t * msg;
+-    msg = malloc( sizeof( draw_msg_t ) );
+-    msg->type = DRAW_CMD_G3_CMD_LIST;
+-    u8 * cmdBuf = malloc( (sizeof(u8) * num << 2) + sizeof(u32) );
+-    *(u32*)cmdBuf = op;
+-    memcpy(cmdBuf+4, args, num << 2);
+-    msg->data.ptr = cmdBuf;
+-    msg->size = (num << 2) + 4;
+-    SIM_HandleG3Command( msg );
+-    free( msg );
++    /* The consumer borrows the command list; it does not free it. (MI_SendGXCommand hands it one
++     * that lives in the DS's own arena, so a consumer that freed would be freeing the game's
++     * memory -- see the note in port/native-render-opt/frontend.cpp.) So whatever is allocated
++     * here is freed here.
++     *
++     * For the sizes that actually occur, nothing is allocated at all. A GX command is one word of
++     * opcode and at most a few dozen of arguments, and SIM_HandleG3Command is synchronous, so the
++     * stack serves -- which matters because this is called for every geometry command the game
++     * issues, and two mallocs per command is a cost a 3D scene pays thousands of times a frame. */
++    draw_msg_t msg;
++    u32 stackBuf[65];
++    u8 * cmdBuf = (num + 1 <= sizeof(stackBuf) / sizeof(stackBuf[0]))
++                      ? (u8 *)stackBuf
++                      : (u8 *)malloc( ((u32)num << 2) + sizeof(u32) );
++    if (cmdBuf) {
++        *(u32*)cmdBuf = op;
++        memcpy(cmdBuf+4, args, num << 2);
++        msg.type = DRAW_CMD_G3_CMD_LIST;
++        msg.data.ptr = cmdBuf;
++        msg.size = (num << 2) + 4;
++        SIM_HandleG3Command( &msg );
++        if (cmdBuf != (u8 *)stackBuf) {
++            free( cmdBuf );
++        }
++    }
+     #else
+     reg_G3X_GXFIFO = op;
+     sendNB(args, (void *)&reg_G3X_GXFIFO, num << 2);

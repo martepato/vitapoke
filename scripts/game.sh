@@ -75,6 +75,8 @@ if ! done_ base; then
   done
   rsync -a "$U/pokeplatinum/" "$T/native-probe/pokeplatinum/"   # keeps .git: gen-game-tables.py uses git ls-tree
   (cd "$T/native-probe/pokeplatinum" && patch -p1 -s < "$ROOT/patches/pokeplatinum/local-edits.patch")
+  # Who owns a geometry command list: the producer. See the patch's own comment.
+  (cd "$T/native-probe/libntrsystem" && patch -p1 -s < "$ROOT/patches/libntrsystem/g3d-command-ownership.patch")
   mark base
 fi
 
