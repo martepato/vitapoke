@@ -75,3 +75,60 @@
      #else
      reg_G3X_GXFIFO = op;
      sendNB(args, (void *)&reg_G3X_GXFIFO, num << 2);
+--- a/libraries/g3d/src/sbc.c
++++ b/libraries/g3d/src/sbc.c
+@@ -768,16 +768,21 @@
+             G3_MtxMode(GX_MTXMODE_POSITION_VECTOR);
+             G3_LoadMtx43(NNS_G3dGlbGetInvSrtCameraMtx());
+ 
+-            draw_msg_t * msg;
+-            msg = malloc( sizeof( draw_msg_t ) );
+-            msg->type = DRAW_CMD_G3_CMD_LIST;
+-            u8 * cmdBuf = malloc(sizeof(MtxFx43) + sizeof(VecFx32) + sizeof(u32) );
++            /* The same ownership correction as gecom.c, and the same reason it matters: the
++             * consumer borrows the command list and does not free it, so the command buffer this
++             * allocated was never released. A billboard is drawn for every sprite the overworld
++             * puts on screen, several times a frame, and at sixty-four bytes a time that was the
++             * heap climbing for as long as the scene lasted. SIM_HandleG3Command is synchronous
++             * and the list is fixed and small, so the stack serves and there is nothing to own. */
++            draw_msg_t msg;
++            u8 cmdBuf[sizeof(MtxFx43) + sizeof(VecFx32) + sizeof(u32)];
++
+             *(u32*)cmdBuf = GX_PACK_OP(G3OP_MTX_POP, G3OP_MTX_MODE, G3OP_MTX_LOAD_4x3, G3OP_NOP);
+             memcpy(cmdBuf+4, &bbcmd1[3], sizeof(MtxFx43) + sizeof(VecFx32));
+-            msg->data.ptr = cmdBuf;
+-            msg->size = (sizeof(MtxFx43) + sizeof(VecFx32) + sizeof(u32));
+-            SIM_HandleG3Command( msg );
+-            free( msg );
++            msg.type = DRAW_CMD_G3_CMD_LIST;
++            msg.data.ptr = cmdBuf;
++            msg.size = (sizeof(MtxFx43) + sizeof(VecFx32) + sizeof(u32));
++            SIM_HandleG3Command( &msg );
+             #else
+             reg_G3X_GXFIFO = GX_PACK_OP(G3OP_MTX_POP, G3OP_MTX_MODE, G3OP_MTX_LOAD_4x3, G3OP_NOP);
+             MI_CpuSend32(&bbcmd1[1],
+@@ -807,15 +812,16 @@
+                          sizeof(MtxFx43) + sizeof(VecFx32));
+         } else {
+             #ifdef SDK_PORT
+-            draw_msg_t * msg;
+-            msg = malloc( sizeof( draw_msg_t ) );
+-            msg->type = DRAW_CMD_G3_CMD_LIST;
+-            u8 * cmdBuf = malloc( 18 * sizeof(u32) );
++            /* As above: the seventy-two bytes this used to allocate per billboard were never
++             * given back. This is the one the heap report named. */
++            draw_msg_t msg;
++            u8 cmdBuf[18 * sizeof(u32)];
++
+             memcpy(cmdBuf, bbcmd1, 18 * sizeof(u32));
+-            msg->data.ptr = cmdBuf;
+-            msg->size = (18 * sizeof(u32));
+-            SIM_HandleG3Command( msg );
+-            free( msg );
++            msg.type = DRAW_CMD_G3_CMD_LIST;
++            msg.data.ptr = cmdBuf;
++            msg.size = (18 * sizeof(u32));
++            SIM_HandleG3Command( &msg );
+             #else
+             MI_CpuSend32(&bbcmd1[0],
+                          &reg_G3X_GXFIFO,
