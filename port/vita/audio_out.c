@@ -49,6 +49,10 @@ static int port = -1;
 static volatile int running;
 static int ready;
 static unsigned underruns, dropped, written;
+/* The lowest the ring got since the last report, and how many times the shortfall correction had
+ * nothing left to correct. A single `fill` reading says where the ring was at that instant; this
+ * says how close it came to running out in between, which is what a listener actually hears. */
+static unsigned lowFill = ~0u;
 
 unsigned VitaNativeAudioOutFill(void) { return (writeIndex - readIndex) & RING_MASK; }
 int VitaNativeAudioOutReady(void) { return ready; }
@@ -75,6 +79,8 @@ static int AudioThread(SceSize args, void *argp)
 		}
 		read = readIndex;
 		avail = (writeIndex - read) & RING_MASK;
+		if (avail < lowFill)
+			lowFill = avail;
 		take = avail < OUT_CHUNK ? avail : OUT_CHUNK;
 		if (take < OUT_CHUNK)
 			underruns++;
@@ -163,6 +169,15 @@ void VitaNativeAudioOutStats(unsigned *fill, unsigned *underrunCount, unsigned *
 		*droppedFrames = dropped;
 	if (writtenFrames)
 		*writtenFrames = written;
+}
+
+/* Read and reset, so each report covers the interval since the last one rather than the whole run. */
+unsigned VitaNativeAudioOutLowFill(void)
+{
+	unsigned low = lowFill;
+
+	lowFill = ~0u;
+	return low == ~0u ? 0u : low;
 }
 
 void VitaNativeAudioOutShutdown(void)

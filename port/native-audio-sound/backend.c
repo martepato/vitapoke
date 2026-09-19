@@ -269,20 +269,26 @@ void VitaNativeSoundAdvance(u32 microseconds){
   else if(fill<target){
    /* Proportional to the shortfall rather than one pump whatever it is. A pump is about 83 samples,
     * so a single one takes a dozen frames to make up a deficit of a thousand -- and the deficit does
-    * not arrive gradually, it arrives all at once when a frame runs long. Three is the ceiling:
-    * enough to recover inside a few frames, not enough to overshoot into a burst that then has to be
-    * trimmed back. */
+    * not arrive gradually, it arrives all at once when a frame runs long.
+    *
+    * The ceiling was three, which was not enough to hold the target at all: hardware showed the ring
+    * settling around 1100 of the 2048 it aims for and never climbing, because three pumps a frame is
+    * 249 samples against the 618 a 39 ms frame consumes, so a deficit that opened in one bad frame
+    * was still being paid off when the next one opened another. Sitting permanently at half the
+    * target is what turned every hitch into an underrun. Twelve closes the worst deficit the ring can
+    * hold in one frame. Overshooting is the cheap direction -- the trim above gives it straight back,
+    * and nothing is lost but a few milliseconds of buffered sound. */
    unsigned behind=(target-fill)/VITAPOKE_AUDIO_PUMP_SAMPLES;
-   if(behind<1u)behind=1u;else if(behind>3u)behind=3u;
+   if(behind<1u)behind=1u;else if(behind>12u)behind=12u;
    cyclePending+=VITAPOKE_AUDIO_PUMP_CYCLES*behind;
   }
  }
  /* One pump is one Nitro sound interval: 174592 ARM7 cycles, 5.21 ms of DS time, 83 samples at
   * 16 kHz. The caller reports a frame's real length clamped to 66 ms, which is 12.8 pumps, and the
-  * correction above can add one more -- so a budget of ten could not cover a slow frame, and this
-  * port's frames were slow. Sixteen covers the worst frame the caller will report and still bounds
-  * what one call can do. */
- unsigned budget=16;
+  * correction above can add twelve more -- so a budget of ten could not cover a slow frame, and this
+  * port's frames were slow. Twenty-eight covers the worst frame the caller will report together with
+  * the largest catch-up, and still bounds what one call can do. */
+ unsigned budget=28;
  while(cyclePending>=VITAPOKE_AUDIO_PUMP_CYCLES&&budget){VitaNativeSoundPump();cyclePending-=VITAPOKE_AUDIO_PUMP_CYCLES;budget--;}
  /* What is left is a debt, not a mistake: DS time the sound engine owes, which the next frame can
   * pay off. Discarding it -- which is what this did -- meant every slow frame permanently lost the
@@ -298,5 +304,6 @@ unsigned fill=0,under=0,drop=0,written=0;VitaNativeAudioOutStats(&fill,&under,&d
   extern void VitaNativeAudioMixStats2(unsigned*,unsigned*,unsigned*);unsigned dt[5],bt[5],q[3];VitaNativeAudioMixStats2(dt,bt,q);
   snprintf(buf,len,"[AUDIO] peak=%u clips=%u active=%04x dec=%u smp=%u cb=%u livemax=%u dtype=%u/%u/%u/%u/%u btype=%u/%u/%u/%u/%u quietblk=%u quietdec=%u centre=%u",mixPeak,mixClips,VitaNativeAudioMixActiveMask(),d,sm,cb,mx,dt[0],dt[1],dt[2],dt[3],dt[4],bt[0],bt[1],bt[2],bt[3],bt[4],q[0],q[1],q[2]);return;}
 #endif
- snprintf(buf,len,"[AUDIO] out=%d fill=%u written=%u underruns=%u dropped=%u peak=%u clips=%u active=%04x",outputReady,fill,written,under,drop,mixPeak,mixClips,VitaNativeAudioMixActiveMask());}
+ {extern unsigned VitaNativeAudioOutLowFill(void);
+  snprintf(buf,len,"[AUDIO] out=%d fill=%u low=%u written=%u underruns=%u dropped=%u peak=%u clips=%u active=%04x",outputReady,fill,VitaNativeAudioOutLowFill(),written,under,drop,mixPeak,mixClips,VitaNativeAudioMixActiveMask());}}
 BOOL VitaNativeSoundProofValid(void){printf("[AUDIO-STATE] activeSeen=%04x tickPeak=%u pumpMicros=%llu averageUs=%llu\n",activeSeen,tickPeak,pumpMicros,pumps?pumpMicros/pumps:0);extern u32 VitaNativeAudioStateHash(void);printf("[AUDIO-HASH] samples=%08lx state=%08lx\n",(unsigned long)sampleHash,(unsigned long)VitaNativeAudioStateHash());return energy>0&&activeSeen&&tickPeak&&SNDi_SharedWork&&SNDi_SharedWork->finishCommandTag==lists;}
