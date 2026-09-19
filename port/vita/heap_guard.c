@@ -272,21 +272,42 @@ void *__wrap_memalign(size_t alignment, size_t size)
 	return payload;
 }
 
-/* Where the live memory came from: the eight call sites holding the most, biggest first.
+/* What each call site held last time, so the report can say what has grown since. A leak is not the
+ * biggest number in the list -- the game's own arenas are -- it is the number that keeps climbing. */
+#define REMEMBERED 32
+static struct { const void *caller; unsigned bytes; } previous[REMEMBERED];
+static unsigned previousCount;
+
+static int PreviousBytes(const void *caller, unsigned *bytes)
+{
+	for (unsigned i = 0; i < previousCount; i++)
+		if (previous[i].caller == caller) {
+			*bytes = previous[i].bytes;
+			return 1;
+		}
+	return 0;
+}
+
+/* Where the live memory came from: the eight call sites holding the most, biggest first, and how
+ * much each of them has gained or lost since the last report.
  *
  * This is how a leak gets a name. The guard already records which address asked for every block, so
- * the live list only has to be walked and totalled by caller. Run the result through
- * arm-vita-eabi-addr2line against the .elf to turn each address into a function. */
+ * the live list only has to be walked and totalled by caller. Run the addresses through
+ * arm-vita-eabi-addr2line against the .elf to turn each one into a function. The column that matters
+ * is the change: a caller that is up by the same amount every report is the leak, whatever its
+ * absolute size. */
 void VitaNativeHeapGuardReport(void)
 {
 	struct { const void *caller; unsigned bytes, count; } top[8];
 	unsigned found = 0;
+	unsigned liveBytes = 0;
 
 	memset(top, 0, sizeof top);
 	Lock();
 	for (struct Block *b = live; b; b = b->next) {
 		unsigned i;
 
+		liveBytes += b->size;
 		for (i = 0; i < found; i++)
 			if (top[i].caller == b->caller)
 				break;
@@ -311,10 +332,27 @@ void VitaNativeHeapGuardReport(void)
 	}
 	Unlock();
 
-	VitaNativeMemLog("[HEAP] %u live blocks; the callers holding the most:", blocks);
-	for (unsigned i = 0; i < found; i++)
-		VitaNativeMemLog("[HEAP]   %p  %u bytes in %u blocks", top[i].caller, top[i].bytes,
-		                 top[i].count);
+	VitaNativeMemLog("[HEAP] %u live blocks holding %u bytes; the callers holding the most:",
+	                 blocks, liveBytes);
+	for (unsigned i = 0; i < found; i++) {
+		unsigned was = 0;
+		int seen = PreviousBytes(top[i].caller, &was);
+
+		if (!seen)
+			VitaNativeMemLog("[HEAP]   %p  %u bytes in %u blocks  (new)", top[i].caller,
+			                 top[i].bytes, top[i].count);
+		else if (top[i].bytes >= was)
+			VitaNativeMemLog("[HEAP]   %p  %u bytes in %u blocks  +%u", top[i].caller,
+			                 top[i].bytes, top[i].count, top[i].bytes - was);
+		else
+			VitaNativeMemLog("[HEAP]   %p  %u bytes in %u blocks  -%u", top[i].caller,
+			                 top[i].bytes, top[i].count, was - top[i].bytes);
+	}
+	previousCount = found < REMEMBERED ? found : REMEMBERED;
+	for (unsigned i = 0; i < previousCount; i++) {
+		previous[i].caller = top[i].caller;
+		previous[i].bytes = top[i].bytes;
+	}
 }
 
 /* For the memory report: how many blocks the guard is holding. */

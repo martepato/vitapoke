@@ -172,7 +172,13 @@ A="$T/native-audio-app"
 # than a file make can compare timestamps against, and a stale VPK from the other choice would be
 # indistinguishable from a fresh one.
 rm -f "$A/vitapoke-platinum.vpk"
-step link         make -C "$A" vitapoke-platinum.vpk ASSET_DIR="$ASSETS"
+# VITAPOKE_MALLOC_GUARD=1 builds the diagnostic allocator in: every block gets a guard word either
+# side, and every 300 frames the log names the call sites holding the most memory and how much each
+# has gained since the last report. That last column is what finds a leak -- the biggest number in
+# the list is the game's own arena and always will be; the one that climbs by the same amount every
+# report is the bug. It costs 32 bytes and a list walk per allocation, so it is not a build to play.
+step link         make -C "$A" vitapoke-platinum.vpk ASSET_DIR="$ASSETS" \
+                       MALLOC_GUARD="${VITAPOKE_MALLOC_GUARD:-}"
 OUT="$ROOT/dist"; mkdir -p "$OUT"
 cp -f "$A/vitapoke-platinum.vpk" "$OUT/vitapoke-platinum.vpk"
 if [ -n "$ASSETS" ]; then
