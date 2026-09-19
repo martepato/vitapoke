@@ -13,15 +13,25 @@ enum{B_APP,B_TASK_MAIN,B_TASK_PRINT,B_TASK_POSTVB,B_LAND,B_PROPS2,B_FIELDEFF,B_O
 static const char*const kNames[B_COUNT]={"app","task_main","task_print","task_postvb","land_render","props_render2","fieldeff_render","owanim_render","billboard","sound_tick","swap","keypad","comm"};
 static struct{unsigned long long us,g3;unsigned calls;}b[B_COUNT];
 static unsigned mallocN,freeN,memalignN,reallocN,callocN,allocTimedN;static unsigned long long allocTimedUs;
-#define BEGIN unsigned t0=sceKernelGetProcessTimeLow(),g0=g3ProfUs
-#define END(id) {unsigned t1=sceKernelGetProcessTimeLow();b[id].us+=t1-t0;b[id].g3+=g3ProfUs-g0;b[id].calls++;}
-#define WRAP_V1(id,name,T1) extern void __real_##name(T1);void __wrap_##name(T1 a){BEGIN;__real_##name(a);END(id)}
-#define WRAP_V2(id,name,T1,T2) extern void __real_##name(T1,T2);void __wrap_##name(T1 a,T2 c){BEGIN;__real_##name(a,c);END(id)}
-#define WRAP_V0(id,name) extern void __real_##name(void);void __wrap_##name(void){BEGIN;__real_##name();END(id)}
-extern BOOL __real_ApplicationManager_Exec(void*);BOOL __wrap_ApplicationManager_Exec(void*m){BEGIN;BOOL r=__real_ApplicationManager_Exec(m);END(B_APP)return r;}
-extern BOOL __real_CommSys_Update(void);BOOL __wrap_CommSys_Update(void){BEGIN;BOOL r=__real_CommSys_Update();END(B_COMM)return r;}
+/* Some of these call themselves: ApplicationManager_Exec runs a sub-application through the same
+   entry point, and the task managers nest. Timing every entry made a bucket bigger than the frame it
+   sits in -- app came out at 64 ms of a 38 ms game thread, which is not a number anybody can act on.
+   Only the outermost entry is counted, so a bucket means "time spent in this, including anything it
+   called", once. */
+static unsigned depth[B_COUNT];
+#define BEGIN(id) unsigned t0=0,g0=0; int outer_=(depth[id]++==0); \
+                  if(outer_){t0=sceKernelGetProcessTimeLow();g0=g3ProfUs;}
+#define END(id) {if(--depth[id]==0){unsigned t1=sceKernelGetProcessTimeLow();\
+                 b[id].us+=t1-t0;b[id].g3+=g3ProfUs-g0;b[id].calls++;}}
+#define WRAP_V1(id,name,T1) extern void __real_##name(T1);void __wrap_##name(T1 a){BEGIN(id);__real_##name(a);END(id)}
+#define WRAP_V2(id,name,T1,T2) extern void __real_##name(T1,T2);void __wrap_##name(T1 a,T2 c){BEGIN(id);__real_##name(a,c);END(id)}
+#define WRAP_V0(id,name) extern void __real_##name(void);void __wrap_##name(void){BEGIN(id);__real_##name();END(id)}
+extern BOOL __real_ApplicationManager_Exec(void*);BOOL __wrap_ApplicationManager_Exec(void*m){BEGIN(B_APP);BOOL r=__real_ApplicationManager_Exec(m);END(B_APP)return r;}
+extern BOOL __real_CommSys_Update(void);BOOL __wrap_CommSys_Update(void){BEGIN(B_COMM);BOOL r=__real_CommSys_Update();END(B_COMM)return r;}
 extern void __real_SysTaskManager_ExecuteTasks(SysTaskManager*);
-void __wrap_SysTaskManager_ExecuteTasks(SysTaskManager*m){BEGIN;__real_SysTaskManager_ExecuteTasks(m);int id=m==gSystem.mainTaskMgr?B_TASK_MAIN:m==gSystem.printTaskMgr?B_TASK_PRINT:B_TASK_POSTVB;END(id)}
+void __wrap_SysTaskManager_ExecuteTasks(SysTaskManager*m){
+ int id=m==gSystem.mainTaskMgr?B_TASK_MAIN:m==gSystem.printTaskMgr?B_TASK_PRINT:B_TASK_POSTVB;
+ BEGIN(id);__real_SysTaskManager_ExecuteTasks(m);END(id)}
 WRAP_V2(B_LAND,LandDataManager_RenderLoadedMaps,void*,void*)
 WRAP_V2(B_PROPS2,MapPropManager_Render2,void*,void*)
 WRAP_V1(B_FIELDEFF,FieldEffectManager_Render,void*)

@@ -1,0 +1,19 @@
+--- a/include/simulator/g3_handler.h
++++ b/include/simulator/g3_handler.h
+@@ -72,6 +72,16 @@
+         fx32 nums[4];
+     };
+     // TODO: eventually keep these in fixed point format
++    /* Where this vertex lands on the screen, worked out once when the vertex is made.
++     *
++     * A strip reuses the previous polygon's last vertices: a triangle strip re-submits two of
++     * every three, a quad strip two of every four. G3SIM_SubmitPolygon used to do the perspective
++     * divide for each vertex of each polygon, so those shared vertices were divided again for
++     * every polygon they belonged to -- half to two thirds of the work on a path that runs
++     * fourteen thousand times a frame. The result belongs to the vertex, so it is kept with it
++     * and travels with the struct when a strip shuffles its vertices around. */
++    GLfloat sx;
++    GLfloat sy;
+     GLfloat s;
+     GLfloat t;
+     GLfloat r;

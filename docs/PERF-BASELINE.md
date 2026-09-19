@@ -41,14 +41,53 @@ What does not carry across:
 - **Absolute frame rate.** Unthrottled, the emulator sits at the game's own 30 fps ceiling whatever
   the port does, which tells you nothing.
 
+## What it cannot price
+
+The emulator recompiles ARM onto a desktop processor, and the two do not agree about what is
+expensive. A Cortex-A9's floating-point divide is fifteen to twenty cycles and is not pipelined; the
+x86 instruction it becomes is about four and is. So a change that removes float divisions -- and
+several of the ones this port has needed are exactly that -- barely moves the number here and moves
+it on the console.
+
+Hoisting the perspective divide out of the polygon loop measured 4.6% here while removing about two
+fifths of the divides on the path. Both of those are true. When a change is of that kind, read the
+instruction counts instead:
+
+```
+OBJ=$(find .work/vita -name g3_handler.o | head -1)
+arm-vita-eabi-objdump -d "$OBJ" | awk '/^[0-9a-f]+ <G3SIM_Vtx>:/{n=0;g=1} g&&/^ *[0-9a-f]+:/{n++} /^$/{if(g)print n; g=0}'
+```
+
+That is the console's arithmetic, counted on the console's instruction set, and it is the honest
+measure for this class of change. The emulator's job for those is to prove the output did not
+change.
+
+## The throttle, and what it is worth
+
+`--throttle 30` was derived from per-vertex cost and turns out to be too harsh to be useful: at that
+quota the run drops to 6 fps, and the reason is `present_us` going from 0.2 ms to 79 ms. That is
+Vita3K's own OpenGL being starved of CPU, not anything about the port. A quota throttles the
+emulator, and most of what the emulator does is not the game.
+
+So the throttle is worth using only to put the *game thread* under pressure, and only its
+`[GPROF]` buckets are worth reading while it is on. For "does this hold 30 fps", the useful sum is
+the game thread's own work (`game_us` minus `idle_us`) scaled by the per-vertex ratio below, plus
+what a console log says the renderer costs. Standing in town that comes to roughly 30 ms of game
+thread and 8 ms of renderer, which is not 33.
+
 ## The measurements this is calibrated against
 
 Standing in the overworld, unthrottled, from `tests/vita/town.sh`:
 
 ```
-fps=30.01  game_us=32389  idle_us=23418   (8.97 ms of real work)
-land_render=7285 self + 488 3D            verts=7529  normals=858  polygons=3839
+fps=30.00  game_us=32334  idle_us=23629   (8.71 ms of real work)
+app=7746 self            land_render=6950 self + 498 3D
+verts=7529  normals=858  polygons=3839
 ```
+
+`land_render` is about eighty per cent of the game thread's work. `fieldeff_render` and
+`owanim_render` report nearly the same number as each other because one calls the other, so count
+one of them, not both.
 
 A Vita, in the field, from a log sent back after the vertical-blank fix:
 

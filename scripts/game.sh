@@ -64,6 +64,24 @@ if [ -f "$WORK/.toolchain" ] && [ "$(cat "$WORK/.toolchain")" != "$TOOLCHAIN_ID"
 fi
 printf '%s' "$TOOLCHAIN_ID" > "$WORK/.toolchain"
 
+# The staged tree is the upstream sources with this repository's patches applied, and the `base`
+# stamp says it has been made. Nothing recorded which patches went into it, so editing one -- or
+# adding one, which is worse, because the file it needs to change is simply never touched -- left a
+# tree that still looked finished. The build then compiled against an unpatched header and said the
+# struct had no such member, which is the good case; the bad case is a patch that only changes
+# behaviour and produces a build that is quietly the old one. The patches' own contents are part of
+# the stamp's identity now.
+# sha1() in common.sh takes a file; this is a stream, so the two spellings are inline.
+PATCH_ID=$(cat "$ROOT"/patches/*/*.patch 2>/dev/null |
+  { if command -v sha1sum >/dev/null; then sha1sum; else shasum -a 1; fi; } | cut -d" " -f1)
+# A tree with no record counts as a changed one: what it was staged from is unknown, and guessing
+# that it is current is how a stale tree survives.
+if [ -d "$T" ] && [ "$(cat "$WORK/.patches" 2>/dev/null)" != "$PATCH_ID" ]; then
+  log "The patches changed since this tree was staged: applying them from the start"
+  rm -rf "$T" "$WORK"/.stamp-*
+fi
+printf '%s' "$PATCH_ID" > "$WORK/.patches"
+
 if ! done_ base; then
   log "Fetching pinned upstream sources"
   "$ROOT/scripts/fetch.sh" libntr libntrsystem libntrdwc libntrwifi libvct metang pokeplatinum
@@ -80,6 +98,7 @@ if ! done_ base; then
   (cd "$T/native-probe/libntrsystem" && patch -p1 -s < "$ROOT/patches/libntrsystem/g3d-command-ownership.patch")
   # The save goes through the port, not through the desktop simulator's "save.bin". Same.
   (cd "$T/native-graphics/libntr" && patch -p1 -s < "$ROOT/patches/libntr/card-backup-through-the-port.patch")
+  (cd "$T/native-graphics/libntr" && patch -p1 -s < "$ROOT/patches/libntr/g3-cache-the-screen-projection.patch")
   mark base
 fi
 

@@ -1686,6 +1686,22 @@ void G3SIM_Vtx(s16 x, s16 y, s16 z)
     s_g3PolygonVerts[s_G3numInPoly].s = s_g3NextTexCoordS * s_texInvSSize;
     s_g3PolygonVerts[s_G3numInPoly].t = s_g3NextTexCoordT * s_texInvTSize;
 
+    /* The perspective divide, here rather than in G3SIM_SubmitPolygon. It depends only on this
+     * vertex, and a strip hands the same vertex to two or three polygons in a row -- see the note
+     * on sx in the vertex struct. W is truncated to the twenty-four bits the geometry engine keeps
+     * before it is used, which is what the submit did. */
+    {
+        G3SIM_FxVtx_t *v = &s_g3PolygonVerts[s_G3numInPoly];
+        v->w &= 0x00FFFFFF;
+        float floatX = FX_FX32_TO_F32(v->x);
+        float floatY = FX_FX32_TO_F32(v->y);
+        float floatW = FX_FX32_TO_F32(v->w);
+        float invW = 1.0f / (2.0f * floatW);
+
+        v->sx = ((floatX + floatW) * (256.0f / 128.0f)) * invW - 1.0f;
+        v->sy = ((floatY + floatW) * (192.0f / 96.0f)) * invW - 1.0f;
+    }
+
     s_G3numInPoly++;
     if( s_primType == GX_BEGIN_QUADS )
     {
@@ -1746,27 +1762,10 @@ void G3SIM_SubmitPolygon(G3SIM_FxVtx_t * fxVerts, int numVerts) {
 
     for(int i=0; i < numVerts; i++) {
         G3SIM_FxVtx_t * curVtx = &fxVerts[i];
-    
-        // Truncate W to 24 bits
-        curVtx->w &= 0x00FFFFFF;
-    
-        float floatX, floatY, floatW;
-        float screenX, screenY;
-    
-        floatX = FX_FX32_TO_F32(curVtx->x);
-        floatY = FX_FX32_TO_F32(curVtx->y);
-        floatW = FX_FX32_TO_F32(curVtx->w);
-    
-        /* One reciprocal for both axes, and the two constant divides folded into it. Each of these
-         * was a separate float division on a path that runs fourteen thousand times a frame, and
-         * only one of the divisors is a power of two, so the compiler had to keep the rest. */
-        float invW = 1.0f / (2.0f * floatW);
 
-        screenX = ((floatX + floatW) * (256.0f / 128.0f)) * invW - 1.0f;
-        screenY = ((floatY + floatW) * (192.0f / 96.0f)) * invW - 1.0f;
-    
-        glVerts[i].x = screenX;
-        glVerts[i].y = screenY;
+        /* Already divided through, in G3SIM_Vtx. W was truncated there too. */
+        glVerts[i].x = curVtx->sx;
+        glVerts[i].y = curVtx->sy;
         glVerts[i].s = curVtx->s;
         glVerts[i].t = curVtx->t;
         glVerts[i].r = curVtx->r;
