@@ -179,8 +179,14 @@ rm -f "$A/vitapoke-platinum.vpk"
 # has gained since the last report. That last column is what finds a leak -- the biggest number in
 # the list is the game's own arena and always will be; the one that climbs by the same amount every
 # report is the bug. It costs 32 bytes and a list walk per allocation, so it is not a build to play.
+# The game-thread profiler is on unless the guarded allocator is, because the two wrap the same
+# allocator functions and the Makefile refuses to have both. It costs two clock reads around each of
+# about fifteen calls a frame and writes one [GAMEPROF] line per 600 frames, which is what says
+# whether a slow frame is the game's own code, the map renderer, or the 3D command path.
+GAME_PROF=1
+[ -n "${VITAPOKE_MALLOC_GUARD:-}" ] && GAME_PROF=
 step link         make -C "$A" vitapoke-platinum.vpk ASSET_DIR="$ASSETS" \
-                       MALLOC_GUARD="${VITAPOKE_MALLOC_GUARD:-}"
+                       MALLOC_GUARD="${VITAPOKE_MALLOC_GUARD:-}" GAME_PROF="$GAME_PROF"
 OUT="$ROOT/dist"; mkdir -p "$OUT"
 cp -f "$A/vitapoke-platinum.vpk" "$OUT/vitapoke-platinum.vpk"
 if [ -n "$ASSETS" ]; then

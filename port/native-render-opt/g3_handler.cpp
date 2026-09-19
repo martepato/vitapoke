@@ -71,6 +71,8 @@ u8 s_g3AmbientColor[3] = {0};
 u8 s_g3SpecularColor[3] = {0};
 u8 s_g3EmissionColor[3] = {0};
 G3SIM_PolygonAttr_t s_curPolygonAttr;
+/* One over the current texture's width and height; see G3SIM_TexImageParam. */
+static float s_texInvSSize = 1.0f / 8.0f, s_texInvTSize = 1.0f / 8.0f;
 
 static u8 s_swapBuffersCalledThisFrame;
 
@@ -1310,10 +1312,15 @@ void G3SIM_MtxTranslate(fx32* trans)
         currentPositionMatrix.nums[3][2] += (FX_Mul(s[0],currentPositionMatrix.nums[0][2]) + FX_Mul(s[1],currentPositionMatrix.nums[1][2]) + FX_Mul(s[2],currentPositionMatrix.nums[2][2]));
         currentPositionMatrix.nums[3][3] += (FX_Mul(s[0],currentPositionMatrix.nums[0][3]) + FX_Mul(s[1],currentPositionMatrix.nums[1][3]) + FX_Mul(s[2],currentPositionMatrix.nums[2][3]));
     }
-    matrix->nums[3][1] += (FX_Mul(s[0],matrix->nums[0][0]) + FX_Mul(s[1],matrix->nums[1][0]) + FX_Mul(s[2],matrix->nums[2][0]));
+    /* Each component into its own column. All four of these wrote [3][1], so a translation in
+     * position mode moved the model in Y by the sum of the four dot products and never in X or Z --
+     * which is a model assembled out of pieces that are all in the wrong place. The block above,
+     * which does the same thing to the position matrix in position-and-vector mode, has the indices
+     * right and is what this should have looked like. */
+    matrix->nums[3][0] += (FX_Mul(s[0],matrix->nums[0][0]) + FX_Mul(s[1],matrix->nums[1][0]) + FX_Mul(s[2],matrix->nums[2][0]));
     matrix->nums[3][1] += (FX_Mul(s[0],matrix->nums[0][1]) + FX_Mul(s[1],matrix->nums[1][1]) + FX_Mul(s[2],matrix->nums[2][1]));
-    matrix->nums[3][1] += (FX_Mul(s[0],matrix->nums[0][2]) + FX_Mul(s[1],matrix->nums[1][2]) + FX_Mul(s[2],matrix->nums[2][2]));
-    matrix->nums[3][1] += (FX_Mul(s[0],matrix->nums[0][3]) + FX_Mul(s[1],matrix->nums[1][3]) + FX_Mul(s[2],matrix->nums[2][3]));
+    matrix->nums[3][2] += (FX_Mul(s[0],matrix->nums[0][2]) + FX_Mul(s[1],matrix->nums[1][2]) + FX_Mul(s[2],matrix->nums[2][2]));
+    matrix->nums[3][3] += (FX_Mul(s[0],matrix->nums[0][3]) + FX_Mul(s[1],matrix->nums[1][3]) + FX_Mul(s[2],matrix->nums[2][3]));
 
     if( s_curMtxMode != GX_MTXMODE_TEXTURE )
     {
@@ -1348,9 +1355,9 @@ void G3SIM_Normal(u32 data)
 
     float color[3] = {};
 
-    color[0] = (float)s_g3EmissionColor[0] / 255.0f;
-    color[1] = (float)s_g3EmissionColor[1] / 255.0f;
-    color[2] = (float)s_g3EmissionColor[2] / 255.0f;
+    color[0] = (float)s_g3EmissionColor[0] * (1.0f / 255.0f);
+    color[1] = (float)s_g3EmissionColor[1] * (1.0f / 255.0f);
+    color[2] = (float)s_g3EmissionColor[2] * (1.0f / 255.0f);
 
     for(int lightNum=0; lightNum<4; lightNum++) {
         if((s_curPolygonAttr.lightFlag >> lightNum) & 1)
@@ -1382,19 +1389,19 @@ void G3SIM_Normal(u32 data)
             }
 
             //Specular color
-            color[0] = color[0] + (((float)s_g3SpecularColor[0] / 255.0f) * ((float)s_G3LightColor[lightNum][0] / 255.0f)); // * ShininessLevel TODO
-            color[1] = color[1] + (((float)s_g3SpecularColor[1] / 255.0f) * ((float)s_G3LightColor[lightNum][1] / 255.0f)); // * ShininessLevel TODO
-            color[2] = color[2] + (((float)s_g3SpecularColor[2] / 255.0f) * ((float)s_G3LightColor[lightNum][2] / 255.0f)); // * ShininessLevel TODO
+            color[0] = color[0] + (((float)s_g3SpecularColor[0] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][0] * (1.0f / 255.0f))); // * ShininessLevel TODO
+            color[1] = color[1] + (((float)s_g3SpecularColor[1] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][1] * (1.0f / 255.0f))); // * ShininessLevel TODO
+            color[2] = color[2] + (((float)s_g3SpecularColor[2] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][2] * (1.0f / 255.0f))); // * ShininessLevel TODO
 
             //Diffuse color
-            color[0] = color[0] + (((float)s_g3DiffuseColor[0] / 255.0f) * ((float)s_G3LightColor[lightNum][0] / 255.0f) * diffuseLevel); // * DiffuseLevel TODO
-            color[1] = color[1] + (((float)s_g3DiffuseColor[1] / 255.0f) * ((float)s_G3LightColor[lightNum][1] / 255.0f) * diffuseLevel); // * DiffuseLevel TODO
-            color[2] = color[2] + (((float)s_g3DiffuseColor[2] / 255.0f) * ((float)s_G3LightColor[lightNum][2] / 255.0f) * diffuseLevel); // * DiffuseLevel TODO
+            color[0] = color[0] + (((float)s_g3DiffuseColor[0] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][0] * (1.0f / 255.0f)) * diffuseLevel); // * DiffuseLevel TODO
+            color[1] = color[1] + (((float)s_g3DiffuseColor[1] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][1] * (1.0f / 255.0f)) * diffuseLevel); // * DiffuseLevel TODO
+            color[2] = color[2] + (((float)s_g3DiffuseColor[2] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][2] * (1.0f / 255.0f)) * diffuseLevel); // * DiffuseLevel TODO
 
             //Ambient color
-            color[0] = color[0] + (((float)s_g3AmbientColor[0] / 255.0f) * ((float)s_G3LightColor[lightNum][0] / 255.0f));
-            color[1] = color[1] + (((float)s_g3AmbientColor[1] / 255.0f) * ((float)s_G3LightColor[lightNum][1] / 255.0f));
-            color[2] = color[2] + (((float)s_g3AmbientColor[2] / 255.0f) * ((float)s_G3LightColor[lightNum][2] / 255.0f));
+            color[0] = color[0] + (((float)s_g3AmbientColor[0] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][0] * (1.0f / 255.0f)));
+            color[1] = color[1] + (((float)s_g3AmbientColor[1] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][1] * (1.0f / 255.0f)));
+            color[2] = color[2] + (((float)s_g3AmbientColor[2] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][2] * (1.0f / 255.0f)));
         }
     }
 
@@ -1565,6 +1572,10 @@ void G3SIM_TexImageParam(u32 data)
     s_texImageParam.textureSSize = 8 << ((data & 0b11100000000000000000000) >> 20);
     s_texImageParam.textureTSize = 8 << ((data & 0b11100000000000000000000000) >> 23);
     s_texImageParam.textureFormat = (data & 0b11100000000000000000000000000) >> 26;
+    /* The reciprocals the vertex path wants. Computed here, where the size changes, rather than
+     * twice per vertex. */
+    s_texInvSSize = s_texImageParam.textureSSize ? 1.0f / (float)s_texImageParam.textureSSize : 0.0f;
+    s_texInvTSize = s_texImageParam.textureTSize ? 1.0f / (float)s_texImageParam.textureTSize : 0.0f;
     s_texImageParam.color0 = (data & 0b100000000000000000000000000000) >> 29;
     s_texImageParam.texCordTransform = (data & 0b11000000000000000000000000000000) >> 30;
     return;
@@ -1604,13 +1615,13 @@ void G3SIM_Vtx(s16 x, s16 y, s16 z)
     s_g3PolygonVerts[s_G3numInPoly].z = fxZ;
     s_g3PolygonVerts[s_G3numInPoly].w = fxW;
 
-    s_g3PolygonVerts[s_G3numInPoly].r = (float)s_g3CurColor[0] / 255.0f;
-    s_g3PolygonVerts[s_G3numInPoly].g = (float)s_g3CurColor[1] / 255.0f;
-    s_g3PolygonVerts[s_G3numInPoly].b = (float)s_g3CurColor[2] / 255.0f;
+    s_g3PolygonVerts[s_G3numInPoly].r = (float)s_g3CurColor[0] * (1.0f / 255.0f);
+    s_g3PolygonVerts[s_G3numInPoly].g = (float)s_g3CurColor[1] * (1.0f / 255.0f);
+    s_g3PolygonVerts[s_G3numInPoly].b = (float)s_g3CurColor[2] * (1.0f / 255.0f);
     s_g3PolygonVerts[s_G3numInPoly].a = s_curPolygonAttr.alpha;
 
-    s_g3PolygonVerts[s_G3numInPoly].s = s_g3NextTexCoordS / (float)s_texImageParam.textureSSize;
-    s_g3PolygonVerts[s_G3numInPoly].t = s_g3NextTexCoordT / (float)s_texImageParam.textureTSize;
+    s_g3PolygonVerts[s_G3numInPoly].s = s_g3NextTexCoordS * s_texInvSSize;
+    s_g3PolygonVerts[s_G3numInPoly].t = s_g3NextTexCoordT * s_texInvTSize;
 
     s_G3numInPoly++;
     if( s_primType == GX_BEGIN_QUADS )
@@ -1683,11 +1694,13 @@ void G3SIM_SubmitPolygon(G3SIM_FxVtx_t * fxVerts, int numVerts) {
         floatY = FX_FX32_TO_F32(curVtx->y);
         floatW = FX_FX32_TO_F32(curVtx->w);
     
-        screenX = (((floatX+floatW)*256.0f) / (2*floatW));
-        screenY = (((floatY+floatW)*192.0f) / (2*floatW));
-        					
-        screenX = (screenX / 128.0f) - 1.0f;
-        screenY = (screenY / 96.0f) - 1.0f;
+        /* One reciprocal for both axes, and the two constant divides folded into it. Each of these
+         * was a separate float division on a path that runs fourteen thousand times a frame, and
+         * only one of the divisors is a power of two, so the compiler had to keep the rest. */
+        float invW = 1.0f / (2.0f * floatW);
+
+        screenX = ((floatX + floatW) * (256.0f / 128.0f)) * invW - 1.0f;
+        screenY = ((floatY + floatW) * (192.0f / 96.0f)) * invW - 1.0f;
     
         glVerts[i].x = screenX;
         glVerts[i].y = screenY;

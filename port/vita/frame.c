@@ -40,6 +40,10 @@ extern void VitaNativeSoundOutputLine(char *buffer, unsigned length);
 extern void VitaNativeVBlankFrameComplete(void);
 extern unsigned long long VitaNativeVBlankIdleTake(void);
 extern unsigned VitaNativeVBlankWaitsTake(void);
+extern unsigned VitaNativeVBlankSkippedTake(void);
+/* Only present when the application was linked with GAME_PROF=1, which is the default unless the
+ * guarded allocator is in: both wrap malloc. Weak so this file links either way. */
+extern void VitaNativeGameProfLine(unsigned frames) __attribute__((weak));
 extern void VitaNativeMemReport(const char *tag);
 extern void VitaNativeMemPoll(void);
 
@@ -94,6 +98,8 @@ static void Report(void)
 	/* Frames on which each screen was actually composed. Equal to the period means the frame caches
 	 * never hit; far below it means they are doing their job. */
 	unsigned composedTop = 0, composedBottom = 0;
+	/* Vertical blanks the game asked for that had already gone by, so it did not wait for them. */
+	unsigned skipped = VitaNativeVBlankSkippedTake();
 	char sound[192];
 
 	VitaNativeRenderGetTimings(&presentUs, &software2DUs);
@@ -104,7 +110,7 @@ static void Report(void)
 	VitaNativeMemLog("[PERF] frames=%u fps=%.2f game_us=%llu idle_us=%llu audio_us=%llu "
 	                 "render_us=%llu bind_us=%llu compose_us=%llu upload_us=%llu present_us=%llu "
 	                 "wait_us=%llu other_us=%llu "
-	                 "vblanks=%u.%02u composed=%u/%u polygons=%u dropped=%u/%u layer=%u/%u "
+	                 "vblanks=%u.%02u late=%u composed=%u/%u polygons=%u dropped=%u/%u layer=%u/%u "
 	                 "tex=%u/%u binds=%u hits=%u decodes=%u evictions=%u",
 	                 frames, window ? REPORT_FRAMES * 1000000.0 / window : 0.0,
 	                 gameUs / REPORT_FRAMES, idleUs / REPORT_FRAMES, audioUs / REPORT_FRAMES,
@@ -119,7 +125,7 @@ static void Report(void)
 	                     ? (renderUs - accUploadUs - accPresentUs - accWaitUs) / REPORT_FRAMES
 	                     : 0ULL,
 	                 (unsigned)(vblankWaits / REPORT_FRAMES),
-	                 (unsigned)((vblankWaits * 100 / REPORT_FRAMES) % 100),
+	                 (unsigned)((vblankWaits * 100 / REPORT_FRAMES) % 100), skipped,
 	                 composedTop, composedBottom,
 	                 VitaNativeG3Polygons(), droppedW, droppedFar, layerWanted, layerLit,
 	                 entries, bytes, binds, hits, decodes, evictions);
@@ -127,6 +133,10 @@ static void Report(void)
 	VitaNativeSoundOutputLine(sound, sizeof sound);
 	if (sound[0])
 		VitaNativeMemLog("%s", sound);
+	/* Where the game thread's own time went. It was written and never called, so the one number the
+	 * [PERF] line cannot break down -- game_us -- had no breakdown at all. */
+	if (VitaNativeGameProfLine)
+		VitaNativeGameProfLine(REPORT_FRAMES);
 	gameUs = audioUs = renderUs = idleUs = 0;
 	accBindUs = accComposeUs = accUploadUs = accPresentUs = accWaitUs = 0;
 	vblankWaits = 0;
