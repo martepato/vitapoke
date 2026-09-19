@@ -318,20 +318,28 @@ static unsigned CurrentTexture(void)
 	                     ? (const u16 *)texRange(s_texPlttBase, plttBytes, 0x4000, texPlttSlot)
 	                     : NULL;
 
-	/* Which banks this scene is really using, the first time it uses them. Three or four lines in a
-	 * run, and they are the difference between "the field draws black" and "the field's palettes are
-	 * in F and G and this port was reading E". */
+	/* Which banks this scene is really using, each combination once. They are the difference between
+	 * "the field draws black" and "the field's palettes are in F and G and this port was reading E".
+	 *
+	 * Once per *combination*, not once per change: the field legitimately alternates between two
+	 * texture banks from one draw to the next, so logging every change wrote hundreds of lines a
+	 * frame to the memory card and took the frame rate to single digits. */
 	{
 		/* The bank an address landed in, rather than the address: the low bits are the texture's own
 		 * place inside it and change with every bind. */
 		unsigned imageBank = src ? ((unsigned)((const u8 *)src - s_HW_LCDC_VRAM) & ~0x1FFFFu) : ~0u;
 		unsigned plttBank = pal ? ((unsigned)((const u8 *)pal - s_HW_LCDC_VRAM) & ~0x3FFFu) : ~0u;
-		static unsigned lastImageBank = ~1u, lastPlttBank = ~1u;
+		static unsigned seen[16][2];
+		static unsigned seenCount = 0;
+		unsigned i;
 
-		if (imageBank != lastImageBank || (plttBytes && plttBank != lastPlttBank)) {
-			lastImageBank = imageBank;
-			if (plttBytes)
-				lastPlttBank = plttBank;
+		for (i = 0; i < seenCount; i++)
+			if (seen[i][0] == imageBank && seen[i][1] == plttBank)
+				break;
+		if (i == seenCount && seenCount < 16) {
+			seen[seenCount][0] = imageBank;
+			seen[seenCount][1] = plttBank;
+			seenCount++;
 			VitaNativeMemLog("[TEXTURE] images in LCDC %05x, palettes in LCDC %05x", imageBank,
 			                 plttBytes ? plttBank : ~0u);
 		}
@@ -503,18 +511,27 @@ extern "C" void G3SIM_DrawArray()
 	if (!count || !frameOpen)
 		return;
 	started = VitaOS_Now();
+	/* Whether this polygon may write depth. Alpha 31 is opaque and always does; alpha 0 is the
+	 * DS's wireframe mode rather than an invisible polygon, and also does. Everything between is
+	 * translucent, and only writes depth when POLYGON_ATTR's bit 11 asks for it -- otherwise a
+	 * translucent polygon would hide the ones drawn behind it afterwards. */
+	const unsigned polyAlpha = s_curPolygonAttr.alphaInt;
+	const int depthWrite =
+	    (polyAlpha == 31 || polyAlpha == 0) ? 1 : (int)s_curPolygonAttr.translucentDepth;
+
 	VitaGpuSetPolygonState(!cullEnabled ? VITAGPU_CULL_NONE
 	                                    : cullFront ? VITAGPU_CULL_FRONT : VITAGPU_CULL_BACK,
-	                       depthLess ? VITAGPU_DEPTH_LESS : VITAGPU_DEPTH_LEQUAL);
+	                       depthLess ? VITAGPU_DEPTH_LESS : VITAGPU_DEPTH_LEQUAL, depthWrite);
 	unsigned diagTexture = CurrentTexture();
 
 	if (g3DiagLeft) {
 		const struct VitaGpuVertex &v = vertices[0];
 
 		g3DiagLeft--;
-		VitaNativeMemLog("[G3DIAG] verts=%u tex=%u fmt=%u attr=%02x light=%x cull=%d "
+		VitaNativeMemLog("[G3DIAG] verts=%u tex=%u fmt=%u c0=%u zw=%d attr=%02x light=%x cull=%d "
 		                 "xy=%d,%d z=%d rgba=%d,%d,%d,%d",
 		                 count, diagTexture, (unsigned)s_texImageParam.textureFormat,
+		                 (unsigned)s_texImageParam.color0, depthWrite,
 		                 (unsigned)s_curPolygonAttr.alphaInt, (unsigned)s_curPolygonAttr.lightFlag,
 		                 cullEnabled ? (cullFront ? 1 : 2) : 0,
 		                 (int)v.x, (int)v.y, (int)(v.z * 1000.0f),

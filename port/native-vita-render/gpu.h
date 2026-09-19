@@ -63,7 +63,9 @@ void VitaGpuTextureDestroy(unsigned texture, unsigned textureSize);
 #define VITAGPU_CULL_BACK    2
 #define VITAGPU_DEPTH_LEQUAL 0
 #define VITAGPU_DEPTH_LESS   1
-void VitaGpuSetPolygonState(int cull, int depthCompare);
+/* `depthWrite` is the DS's rule for whether a pixel updates the depth buffer: an opaque polygon
+ * always does, a translucent one only when POLYGON_ATTR says so. */
+void VitaGpuSetPolygonState(int cull, int depthCompare, int depthWrite);
 
 /* Draw a triangle list into the 3D target. `texture` 0 means untextured; repeat is per axis, the
  * DS's texture wrap. */

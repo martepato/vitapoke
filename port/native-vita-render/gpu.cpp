@@ -45,11 +45,13 @@ static unsigned readback[DS_W * DS_H];
  * because the geometry simulator announces it while the vertex list is still being built. */
 static int polygonCull = VITAGPU_CULL_NONE;
 static int polygonDepth = VITAGPU_DEPTH_LEQUAL;
+static int polygonDepthWrite = 1;
 
-void VitaGpuSetPolygonState(int cull, int depthCompare)
+void VitaGpuSetPolygonState(int cull, int depthCompare, int depthWrite)
 {
 	polygonCull = cull;
 	polygonDepth = depthCompare;
+	polygonDepthWrite = depthWrite;
 }
 
 /* VITAPOKE_NO_GPU: compose, but do not draw.
@@ -273,6 +275,13 @@ void VitaGpuFrameBegin3D(void)
 	glDepthFunc(GL_LEQUAL);
 	glDepthMask(GL_TRUE);
 	glDisable(GL_CULL_FACE);
+	/* The DS does not draw a pixel whose alpha came out zero: no colour, and no depth either. That
+	 * is not the same as blending it away, which is all this path used to do -- the pixel vanished
+	 * but still wrote depth, so the sprite's transparent surround hid everything drawn behind it
+	 * afterwards and left a box of background around every tree, cloud and person. Discarding the
+	 * fragment outright is what the hardware does. */
+	glEnable(GL_ALPHA_TEST);
+	glAlphaFunc(GL_GREATER, 0.0f);
 	/* Transparent black: a pixel no polygon covered has to read back as "nothing here", so the 2D
 	 * compositor shows the layer behind it. */
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -296,6 +305,8 @@ void VitaGpuFrameEnd3D(void *rgbaOut)
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
+	glDisable(GL_ALPHA_TEST);
+	glDepthMask(GL_TRUE);
 }
 
 unsigned VitaGpuTextureCreate(unsigned w, unsigned h, const void *rgba)
@@ -358,6 +369,7 @@ void VitaGpuDrawTriangles(unsigned texture, int repeatS, int repeatT,
 		glCullFace(polygonCull == VITAGPU_CULL_FRONT ? GL_FRONT : GL_BACK);
 	}
 	glDepthFunc(polygonDepth == VITAGPU_DEPTH_LESS ? GL_LESS : GL_LEQUAL);
+	glDepthMask(polygonDepthWrite ? GL_TRUE : GL_FALSE);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnableClientState(GL_VERTEX_ARRAY);

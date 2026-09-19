@@ -722,7 +722,10 @@ void G3SIM_DecodeTexA3I5(u8* vramTex, u16* colorAddr, u8* out, u32 s, u32 t)
 			texOffset++;
 			out[texOffset] = b;
 			texOffset++;
-			out[texOffset] = alpha * 8;
+			/* Five bits of alpha into eight. Multiplying by eight stops at 248, so a texel the
+			 * game meant to be solid was drawn at 97% and let what was behind it show through;
+			 * repeating the top bits reaches 255. */
+			out[texOffset] = (u8)((alpha << 3) | (alpha >> 2));
 			texOffset++;
             vramTex++;
         }
@@ -760,7 +763,10 @@ void G3SIM_DecodeTexA5I3(u8* vramTex, u16* colorAddr, u8* out, u32 s, u32 t)
 			texOffset++;
 			out[texOffset] = b;
 			texOffset++;
-			out[texOffset] = alpha*8;
+			/* Five bits of alpha into eight. Multiplying by eight stops at 248, so a texel the
+			 * game meant to be solid was drawn at 97% and let what was behind it show through;
+			 * repeating the top bits reaches 255. */
+			out[texOffset] = (u8)((alpha << 3) | (alpha >> 2));
 			texOffset++;
             vramTex++;
         }
@@ -1416,8 +1422,12 @@ void G3SIM_PolygonAttr(u32 data)
     u8 cullMode = (data & 0b11000000) >> 6;
     u8 depthTest = (data & 0b100000000000000) >> 14;
     u8 useFog = (data & 0b1000000000000000) >> 15;
+    /* Bit 11: whether a translucent pixel updates the depth buffer. The DS leaves it off by
+     * default, which is why a translucent polygon on hardware does not hide the translucent
+     * polygons drawn after it. The field declares it and this decoder was dropping it. */
+    u8 transDepth = (data & 0b100000000000) >> 11;
 
-    if(cullMode != s_curPolygonAttr.cullMode || polygonMode != s_curPolygonAttr.polygonMode || alpha != s_curPolygonAttr.alphaInt || depthTest != s_curPolygonAttr.depthTest || useFog != s_curPolygonAttr.fogEnable)
+    if(cullMode != s_curPolygonAttr.cullMode || polygonMode != s_curPolygonAttr.polygonMode || alpha != s_curPolygonAttr.alphaInt || depthTest != s_curPolygonAttr.depthTest || useFog != s_curPolygonAttr.fogEnable || transDepth != s_curPolygonAttr.translucentDepth)
     {
         // Flush the vertex buffer
         G3SIM_FlushArray();
@@ -1438,6 +1448,7 @@ void G3SIM_PolygonAttr(u32 data)
     s_curPolygonAttr.alphaInt = alpha;
     s_curPolygonAttr.depthTest = depthTest;
     s_curPolygonAttr.fogEnable = useFog;
+    s_curPolygonAttr.translucentDepth = transDepth;
 
     if(alpha == 31){
         s_curPolygonAttr.alpha = 1.0f;
