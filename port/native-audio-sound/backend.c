@@ -255,8 +255,30 @@ void VitaNativeSoundReport(void){printf("[AUDIO] lists=%u commands=%u pumps=%u c
  * a hard cap on pumps per call (a long load must not turn into a CPU spike),
  * and a soft correction from the measured ring fill, which is the only signal
  * that tells us the real drain rate of the hardware audio channel. */
+/* What the pump actually did, for the report. The ring being empty while the sample rate is right
+ * is a contradiction -- the correction below exists to refill it and should fire hardest at zero --
+ * so these say which half of it is untrue: how many pumps the clock asked for, how many the
+ * correction added, how many ran, and the range of ring fills the correction was deciding from.
+ * A frame's fill is not the fill the report happens to sample. */
+extern int VitaNativeSoundSilent;   /* sim_audio.cpp: 1 = nothing is mixed */
+static unsigned advClockPumps, advExtraPumps, advRanPumps, advSilent;
+static unsigned advFillMin=~0u, advFillMax;
+
+void VitaNativeSoundAdvanceStats(unsigned*clockPumps,unsigned*extraPumps,unsigned*ranPumps,
+                                 unsigned*fillMin,unsigned*fillMax,unsigned*silentCalls){
+ if(clockPumps)*clockPumps=advClockPumps;
+ if(extraPumps)*extraPumps=advExtraPumps;
+ if(ranPumps)*ranPumps=advRanPumps;
+ if(fillMin)*fillMin=advFillMin==~0u?0u:advFillMin;
+ if(fillMax)*fillMax=advFillMax;
+ if(silentCalls)*silentCalls=advSilent;
+ advClockPumps=advExtraPumps=advRanPumps=advSilent=0;advFillMin=~0u;advFillMax=0;
+}
+
 void VitaNativeSoundAdvance(u32 microseconds){
  clockRemainder+=(u64)microseconds*OS_SYSTEM_CLOCK;cyclePending+=clockRemainder/1000000;clockRemainder%=1000000;
+ advClockPumps+=(unsigned)(cyclePending/VITAPOKE_AUDIO_PUMP_CYCLES);
+ if(VitaNativeSoundSilent)advSilent++;
  if(outputReady){
   /* Trim by at most one pump per frame (about +-16% of the sample rate) toward
    * the target ring fill. Bounded on purpose: the real-time clock above is the
@@ -281,7 +303,10 @@ void VitaNativeSoundAdvance(u32 microseconds){
    unsigned behind=(target-fill)/VITAPOKE_AUDIO_PUMP_SAMPLES;
    if(behind<1u)behind=1u;else if(behind>12u)behind=12u;
    cyclePending+=VITAPOKE_AUDIO_PUMP_CYCLES*behind;
+   advExtraPumps+=behind;
   }
+  if(fill<advFillMin)advFillMin=fill;
+  if(fill>advFillMax)advFillMax=fill;
  }
  /* One pump is one Nitro sound interval: 174592 ARM7 cycles, 5.21 ms of DS time, 83 samples at
   * 16 kHz. The caller reports a frame's real length clamped to 66 ms, which is 12.8 pumps, and the
@@ -289,7 +314,7 @@ void VitaNativeSoundAdvance(u32 microseconds){
   * port's frames were slow. Twenty-eight covers the worst frame the caller will report together with
   * the largest catch-up, and still bounds what one call can do. */
  unsigned budget=28;
- while(cyclePending>=VITAPOKE_AUDIO_PUMP_CYCLES&&budget){VitaNativeSoundPump();cyclePending-=VITAPOKE_AUDIO_PUMP_CYCLES;budget--;}
+ while(cyclePending>=VITAPOKE_AUDIO_PUMP_CYCLES&&budget){VitaNativeSoundPump();cyclePending-=VITAPOKE_AUDIO_PUMP_CYCLES;budget--;advRanPumps++;}
  /* What is left is a debt, not a mistake: DS time the sound engine owes, which the next frame can
   * pay off. Discarding it -- which is what this did -- meant every slow frame permanently lost the
   * audio it should have produced, so the ring never refilled and better than half of every output
@@ -305,5 +330,7 @@ unsigned fill=0,under=0,drop=0,written=0;VitaNativeAudioOutStats(&fill,&under,&d
   snprintf(buf,len,"[AUDIO] peak=%u clips=%u active=%04x dec=%u smp=%u cb=%u livemax=%u dtype=%u/%u/%u/%u/%u btype=%u/%u/%u/%u/%u quietblk=%u quietdec=%u centre=%u",mixPeak,mixClips,VitaNativeAudioMixActiveMask(),d,sm,cb,mx,dt[0],dt[1],dt[2],dt[3],dt[4],bt[0],bt[1],bt[2],bt[3],bt[4],q[0],q[1],q[2]);return;}
 #endif
  {extern unsigned VitaNativeAudioOutLowFill(void);
-  snprintf(buf,len,"[AUDIO] out=%d fill=%u low=%u written=%u underruns=%u dropped=%u peak=%u clips=%u active=%04x",outputReady,fill,VitaNativeAudioOutLowFill(),written,under,drop,mixPeak,mixClips,VitaNativeAudioMixActiveMask());}}
+  unsigned cp=0,ep=0,rp=0,fmin=0,fmax=0,sil=0;
+  VitaNativeSoundAdvanceStats(&cp,&ep,&rp,&fmin,&fmax,&sil);
+  snprintf(buf,len,"[AUDIO] out=%d fill=%u low=%u written=%u underruns=%u dropped=%u peak=%u clips=%u active=%04x pumps=%u+%u/%u advfill=%u..%u silent=%u",outputReady,fill,VitaNativeAudioOutLowFill(),written,under,drop,mixPeak,mixClips,VitaNativeAudioMixActiveMask(),cp,ep,rp,fmin,fmax,sil);}}
 BOOL VitaNativeSoundProofValid(void){printf("[AUDIO-STATE] activeSeen=%04x tickPeak=%u pumpMicros=%llu averageUs=%llu\n",activeSeen,tickPeak,pumpMicros,pumps?pumpMicros/pumps:0);extern u32 VitaNativeAudioStateHash(void);printf("[AUDIO-HASH] samples=%08lx state=%08lx\n",(unsigned long)sampleHash,(unsigned long)VitaNativeAudioStateHash());return energy>0&&activeSeen&&tickPeak&&SNDi_SharedWork&&SNDi_SharedWork->finishCommandTag==lists;}
