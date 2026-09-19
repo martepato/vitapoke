@@ -29,9 +29,15 @@
 #define RING_FRAMES 8192              /* power of two: 512 ms of slack */
 #define RING_MASK   (RING_FRAMES - 1)
 
-/* What the producer aims to keep buffered: two video frames at 30 fps. Enough to ride out a long
- * game frame, short enough that a sound effect is not noticeably late. */
-#define TARGET_FILL 1024
+/* What the producer aims to keep buffered.
+ *
+ * The producer is the game thread, once a frame: it delivers about 500 samples in a burst every
+ * 33 ms. The consumer takes 256 every 16 ms, steadily. Two frames of slack was not enough to ride
+ * out the jitter between those two rhythms -- hardware logs showed the ring reaching zero and better
+ * than half of the output chunks coming out part silent -- so this is four frames. The cost is
+ * 128 ms between a sound being mixed and being heard, which for this game is not noticeable; the
+ * benefit is that a frame arriving late no longer leaves a hole in the sound. */
+#define TARGET_FILL 2048
 
 extern int VitaNativeSoundSilent;      /* port/native-audio-sound/sim_audio.cpp: 1 = nothing is mixed */
 

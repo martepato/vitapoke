@@ -50,6 +50,10 @@ extern void SND_SetMasterPan7(int);
  * silence rather than not starting.
  */
 #define VITAPOKE_AUDIO_PUMP_CYCLES (SND_PROC_INTERVAL * 64u)     /* 174592 ARM7 cycles */
+/* What one pump is worth at the output rate: 174592 cycles of a 33.51 MHz ARM7 is 5.21 ms, which at
+ * 16 kHz is 83 samples. Used to size the refill correction below in units it can reason about. */
+#define VITAPOKE_AUDIO_PUMP_SAMPLES \
+	((unsigned)(((u64)VITAPOKE_AUDIO_OUT_FREQ * VITAPOKE_AUDIO_PUMP_CYCLES) / OS_SYSTEM_CLOCK))
 #ifndef VITAPOKE_AUDIO_OUT_FREQ
 #define VITAPOKE_AUDIO_OUT_FREQ    16000u
 #endif
@@ -262,11 +266,30 @@ void VitaNativeSoundAdvance(u32 microseconds){
   unsigned fill=VitaNativeAudioOutFill(),target=VitaNativeAudioOutTargetFill();
   if(fill>target*2u||fill>(VitaNativeAudioOutCapacity()*3u)/4u)
    cyclePending=cyclePending>VITAPOKE_AUDIO_PUMP_CYCLES?cyclePending-VITAPOKE_AUDIO_PUMP_CYCLES:0;
-  else if(fill<target)cyclePending+=VITAPOKE_AUDIO_PUMP_CYCLES;
+  else if(fill<target){
+   /* Proportional to the shortfall rather than one pump whatever it is. A pump is about 83 samples,
+    * so a single one takes a dozen frames to make up a deficit of a thousand -- and the deficit does
+    * not arrive gradually, it arrives all at once when a frame runs long. Three is the ceiling:
+    * enough to recover inside a few frames, not enough to overshoot into a burst that then has to be
+    * trimmed back. */
+   unsigned behind=(target-fill)/VITAPOKE_AUDIO_PUMP_SAMPLES;
+   if(behind<1u)behind=1u;else if(behind>3u)behind=3u;
+   cyclePending+=VITAPOKE_AUDIO_PUMP_CYCLES*behind;
+  }
  }
- unsigned budget=10;
+ /* One pump is one Nitro sound interval: 174592 ARM7 cycles, 5.21 ms of DS time, 83 samples at
+  * 16 kHz. The caller reports a frame's real length clamped to 66 ms, which is 12.8 pumps, and the
+  * correction above can add one more -- so a budget of ten could not cover a slow frame, and this
+  * port's frames were slow. Sixteen covers the worst frame the caller will report and still bounds
+  * what one call can do. */
+ unsigned budget=16;
  while(cyclePending>=VITAPOKE_AUDIO_PUMP_CYCLES&&budget){VitaNativeSoundPump();cyclePending-=VITAPOKE_AUDIO_PUMP_CYCLES;budget--;}
- if(cyclePending>=VITAPOKE_AUDIO_PUMP_CYCLES)cyclePending=0;                          /* hit the cap: do not try to catch up */
+ /* What is left is a debt, not a mistake: DS time the sound engine owes, which the next frame can
+  * pay off. Discarding it -- which is what this did -- meant every slow frame permanently lost the
+  * audio it should have produced, so the ring never refilled and better than half of every output
+  * chunk came out part silent. It is carried instead, capped at eight pumps so that a genuine stall
+  * still cannot build a backlog that takes seconds of fast-forwarded sound to clear. */
+ if(cyclePending>VITAPOKE_AUDIO_PUMP_CYCLES*8u)cyclePending=VITAPOKE_AUDIO_PUMP_CYCLES*8u;
 }
 void VitaNativeSoundOutputLine(char*buf,unsigned len){
 unsigned fill=0,under=0,drop=0,written=0;VitaNativeAudioOutStats(&fill,&under,&drop,&written);

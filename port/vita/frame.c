@@ -37,6 +37,7 @@ extern void VitaNativeSoundAdvance(unsigned elapsedMicroseconds);
 extern void VitaNativeSoundOutputLine(char *buffer, unsigned length);
 extern void VitaNativeVBlankFrameComplete(void);
 extern unsigned long long VitaNativeVBlankIdleTake(void);
+extern unsigned VitaNativeVBlankWaitsTake(void);
 extern void VitaNativeMemReport(const char *tag);
 extern void VitaNativeMemPoll(void);
 
@@ -64,6 +65,9 @@ static unsigned long long gameUs, audioUs, renderUs, idleUs;
  * renderer, which meant the report mixed true averages with whatever the last frame happened to
  * cost -- and the last frame of a period is often a cheap one, so the expensive stage looked free. */
 static unsigned long long accBindUs, accComposeUs, accUploadUs, accPresentUs, accWaitUs;
+/* Vertical blanks the game asked to wait for, per update. Two means it is a 30 fps design and 30 is
+ * its own rate rather than this port's limit; one with a 33 ms frame would mean the opposite. */
+static unsigned long long vblankWaits;
 
 void VitaNativeFrameInit(void)
 {
@@ -95,7 +99,7 @@ static void Report(void)
 	VitaNativeMemLog("[PERF] frames=%u fps=%.2f game_us=%llu idle_us=%llu audio_us=%llu "
 	                 "render_us=%llu bind_us=%llu compose_us=%llu upload_us=%llu present_us=%llu "
 	                 "wait_us=%llu other_us=%llu "
-	                 "composed=%u/%u polygons=%u tex=%u/%u binds=%u hits=%u decodes=%u evictions=%u",
+	                 "vblanks=%u.%02u composed=%u/%u polygons=%u tex=%u/%u binds=%u hits=%u decodes=%u evictions=%u",
 	                 frames, window ? REPORT_FRAMES * 1000000.0 / window : 0.0,
 	                 gameUs / REPORT_FRAMES, idleUs / REPORT_FRAMES, audioUs / REPORT_FRAMES,
 	                 renderUs / REPORT_FRAMES, accBindUs / REPORT_FRAMES,
@@ -108,6 +112,8 @@ static void Report(void)
 	                 renderUs > accUploadUs + accPresentUs + accWaitUs
 	                     ? (renderUs - accUploadUs - accPresentUs - accWaitUs) / REPORT_FRAMES
 	                     : 0ULL,
+	                 (unsigned)(vblankWaits / REPORT_FRAMES),
+	                 (unsigned)((vblankWaits * 100 / REPORT_FRAMES) % 100),
 	                 composedTop, composedBottom,
 	                 VitaNativeG3Polygons(), entries, bytes, binds, hits, decodes, evictions);
 	sound[0] = 0;
@@ -116,6 +122,7 @@ static void Report(void)
 		VitaNativeMemLog("%s", sound);
 	gameUs = audioUs = renderUs = idleUs = 0;
 	accBindUs = accComposeUs = accUploadUs = accPresentUs = accWaitUs = 0;
+	vblankWaits = 0;
 	frameStart = VitaOS_Now();
 }
 
@@ -129,6 +136,7 @@ void VitaNativeFrameComplete(void)
 	if (lastComplete)
 		gameUs += now - lastComplete;
 	idleUs += VitaNativeVBlankIdleTake();
+	vblankWaits += VitaNativeVBlankWaitsTake();
 
 	/* How long the frame really took, clamped: below 4 ms is not a frame, and above 66 ms is a
 	 * load screen rather than a frame the sound engine should try to catch up with. */
