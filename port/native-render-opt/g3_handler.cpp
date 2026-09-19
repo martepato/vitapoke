@@ -858,32 +858,41 @@ void G3SIM_LightColor(u32 data)
     s_G3LightColor[lightNum][2] = lightBlue << 3;
 }
 
+/* One of the geometry engine's 10-bit signed fixed-point components: a normal, or a light's
+ * direction. Two's complement, nine fractional bits, so -1.0 to +0.998 in steps of 1/512.
+ *
+ * This was read into a u8. Three of them are packed into one command word and each was masked to
+ * ten bits and then assigned to an eight-bit variable, which threw away bit 9 -- the sign -- before
+ * the next line looked for it, and wrapped what was left of the magnitude modulo 256. So every
+ * normal and every light direction came out positive and of the wrong length, the diffuse dot
+ * product with it was meaningless, and clamping that at zero left most surfaces with no diffuse
+ * light on them at all.
+ *
+ * A material whose colour lives in its diffuse term is then emission plus ambient, which for the
+ * overworld's materials is black. Geometry that sets its colour outright with a COLOR command --
+ * interface, billboards, anything unlit -- was unaffected, so the screen came out black with a few
+ * textures still in it. That is the whole of the symptom.
+ *
+ * The old code also treated the field as sign-and-magnitude over 511. It is not: it is two's
+ * complement over 512, which is what this does.
+ */
+static inline float G3SIM_Decode10(u32 packed)
+{
+    s32 v = (s32)(packed & 0x3FF);
+
+    if (v & 0x200) {
+        v -= 0x400;
+    }
+    return (float)v / 512.0f;
+}
+
 void G3SIM_LightVector(u32 data)
 {
-    u8 lightVecX = (data & 0b1111111111);
-    u8 lightVecXSign = (lightVecX & 0b1000000000) >> 9;
-    lightVecX = lightVecX & 0b111111111;
-    u8 lightVecY = (data & 0b11111111110000000000) >> 10;
-    u8 lightVecYSign = (lightVecY & 0b1000000000) >> 9;
-    lightVecY = lightVecY & 0b111111111;
-    u8 lightVecZ = (data & 0b111111111100000000000000000000) >> 20;
-    u8 lightVecZSign = (lightVecZ & 0b1000000000) >> 9;
-    lightVecZ = lightVecZ & 0b111111111;
     u8 lightNum = (data & 0b11000000000000000000000000000000) >> 30;
 
-    // Should get us a number from -1 to 1
-    s_G3LightVector[lightNum][0] = (float)lightVecX / 511.0f;
-    if(lightVecXSign) {
-        s_G3LightVector[lightNum][0] = s_G3LightVector[lightNum][0] * -1.0f;
-    }
-    s_G3LightVector[lightNum][1] = (float)lightVecY / 511.0f;
-    if(lightVecYSign) {
-        s_G3LightVector[lightNum][1] = s_G3LightVector[lightNum][1] * -1.0f;
-    }
-    s_G3LightVector[lightNum][2] = (float)lightVecZ / 511.0f;
-    if(lightVecZSign) {
-        s_G3LightVector[lightNum][2] = s_G3LightVector[lightNum][2] * -1.0f;
-    }
+    s_G3LightVector[lightNum][0] = G3SIM_Decode10(data);
+    s_G3LightVector[lightNum][1] = G3SIM_Decode10(data >> 10);
+    s_G3LightVector[lightNum][2] = G3SIM_Decode10(data >> 20);
 }
 
 //Load Matrix
@@ -1308,30 +1317,12 @@ void G3SIM_MtxTranslate(fx32* trans)
 
 void G3SIM_Normal(u32 data)
 {
-    u8 vecX = (data & 0b1111111111);
-    u8 vecXSign = (vecX & 0b1000000000) >> 9;
-    vecX = vecX & 0b111111111;
-    u8 vecY = (data & 0b11111111110000000000) >> 10;
-    u8 vecYSign = (vecY & 0b1000000000) >> 9;
-    vecY = vecY & 0b111111111;
-    u8 vecZ = (data & 0b111111111100000000000000000000) >> 20;
-    u8 vecZSign = (vecZ & 0b1000000000) >> 9;
-    vecZ = vecZ & 0b111111111;
-
+    /* The same ten-bit signed components as a light's direction; see G3SIM_Decode10. */
     float normalVectorIn[3];
-    // Should get us a number from -1 to 1
-    normalVectorIn[0] = (float)vecX / 511.0f;
-    if(vecXSign) {
-        normalVectorIn[0] = normalVectorIn[0] * -1.0f;
-    }
-    normalVectorIn[1] = (float)vecY / 511.0f;
-    if(vecYSign) {
-        normalVectorIn[1] = normalVectorIn[1] * -1.0f;
-    }
-    normalVectorIn[2] = (float)vecZ / 511.0f;
-    if(vecZSign) {
-        normalVectorIn[2] = normalVectorIn[2] * -1.0f;
-    }
+
+    normalVectorIn[0] = G3SIM_Decode10(data);
+    normalVectorIn[1] = G3SIM_Decode10(data >> 10);
+    normalVectorIn[2] = G3SIM_Decode10(data >> 20);
 
     //Multiply by the vector matrix
     float normalVector[3];
