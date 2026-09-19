@@ -32,6 +32,7 @@ extern unsigned RenderStage(unsigned stage);
 extern void VitaNativeRenderComposedTake(unsigned *top, unsigned *bottom);
 extern unsigned VitaNativeG3Polygons(void);
 extern void VitaNativeG3DroppedTake(unsigned *atW, unsigned *offScreen);
+extern void VitaNativeG3VertexTake(unsigned *verts, unsigned *normals);
 extern void VitaNativeG3LayerTake(unsigned *wantedFrames, unsigned *litPixels);
 extern void VitaNativeG3TextureStats(unsigned *entries, unsigned *bytes, unsigned *binds,
                                      unsigned *hits, unsigned *decodes, unsigned *evictions);
@@ -95,6 +96,7 @@ static void Report(void)
 	unsigned presentUs = 0, software2DUs = 0;
 	unsigned entries = 0, bytes = 0, binds = 0, hits = 0, decodes = 0, evictions = 0;
 	unsigned droppedW = 0, droppedFar = 0, layerWanted = 0, layerLit = 0;
+	unsigned g3Verts = 0, g3Normals = 0;
 	/* Frames on which each screen was actually composed. Equal to the period means the frame caches
 	 * never hit; far below it means they are doing their job. */
 	unsigned composedTop = 0, composedBottom = 0;
@@ -107,11 +109,12 @@ static void Report(void)
 	VitaNativeG3TextureStats(&entries, &bytes, &binds, &hits, &decodes, &evictions);
 	VitaNativeG3DroppedTake(&droppedW, &droppedFar);
 	VitaNativeG3LayerTake(&layerWanted, &layerLit);
+	VitaNativeG3VertexTake(&g3Verts, &g3Normals);
 	VitaNativeMemLog("[PERF] frames=%u fps=%.2f game_us=%llu idle_us=%llu audio_us=%llu "
 	                 "render_us=%llu bind_us=%llu compose_us=%llu upload_us=%llu present_us=%llu "
 	                 "wait_us=%llu other_us=%llu "
 	                 "vblanks=%u.%02u late=%u composed=%u/%u polygons=%u dropped=%u/%u layer=%u/%u "
-	                 "tex=%u/%u binds=%u hits=%u decodes=%u evictions=%u",
+	                 "tex=%u/%u binds=%u hits=%u decodes=%u evictions=%u verts=%u normals=%u",
 	                 frames, window ? REPORT_FRAMES * 1000000.0 / window : 0.0,
 	                 gameUs / REPORT_FRAMES, idleUs / REPORT_FRAMES, audioUs / REPORT_FRAMES,
 	                 renderUs / REPORT_FRAMES, accBindUs / REPORT_FRAMES,
@@ -128,7 +131,8 @@ static void Report(void)
 	                 (unsigned)((vblankWaits * 100 / REPORT_FRAMES) % 100), skipped,
 	                 composedTop, composedBottom,
 	                 VitaNativeG3Polygons(), droppedW, droppedFar, layerWanted, layerLit,
-	                 entries, bytes, binds, hits, decodes, evictions);
+	                 entries, bytes, binds, hits, decodes, evictions,
+	                 g3Verts / REPORT_FRAMES, g3Normals / REPORT_FRAMES);
 	sound[0] = 0;
 	VitaNativeSoundOutputLine(sound, sizeof sound);
 	if (sound[0])

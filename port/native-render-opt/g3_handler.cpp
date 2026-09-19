@@ -48,6 +48,14 @@ G3SIM_MatrixStack_t s_textureStack = {0};
 static G3SIM_Matrix_t currentProjectionMatrix = {0};
 static G3SIM_Matrix_t currentPositionMatrix = {0};
 static G3SIM_Matrix_t currentVectorMatrix = {0};
+/* Set whenever anything G3SIM_Normal's cached terms are built from changes; see the
+ * lighting cache further down. */
+static int s_lightCacheDirty = 1;
+
+/* How much geometry the game actually sends, so that the time the profiler attributes to the map
+ * renderer can be divided by something. Plain counters: two increments on a path that is already
+ * hundreds of instructions. */
+extern "C" { unsigned g3VtxCalls, g3NormalCalls; }
 static G3SIM_Matrix_t currentTextureMatrix = {0};
 
 static G3SIM_Matrix_t currentClipMatrix = {0};
@@ -66,6 +74,21 @@ GLfloat s_g3NextTexCoordT;
 G3SIM_FxVtx_t s_g3PolygonVerts[4];
 
 u8 s_g3CurColor[3] = {0};
+/* The same colour the vertex path actually wants. Every vertex converted the three bytes above back
+ * to float and scaled them, which is work that belongs where the colour is set -- once per lighting
+ * command or per colour command -- rather than once per vertex. Kept beside the bytes, which the
+ * rest of the simulator still reads. */
+float s_g3CurColorF[3] = {0.0f, 0.0f, 0.0f};
+
+static inline void G3SIM_SetCurColor(unsigned r, unsigned g, unsigned b)
+{
+    s_g3CurColor[0] = (u8)r;
+    s_g3CurColor[1] = (u8)g;
+    s_g3CurColor[2] = (u8)b;
+    s_g3CurColorF[0] = (float)r * (1.0f / 255.0f);
+    s_g3CurColorF[1] = (float)g * (1.0f / 255.0f);
+    s_g3CurColorF[2] = (float)b * (1.0f / 255.0f);
+}
 u8 s_g3DiffuseColor[3] = {0};
 u8 s_g3AmbientColor[3] = {0};
 u8 s_g3SpecularColor[3] = {0};
@@ -210,6 +233,10 @@ int G3SIM_ClipPolygon(fx32 verts[][4], int nVerts, int clipStart, BOOL attribs)
 
 static G3SIM_Matrix_t * getCurrentMatrix()
 {
+    /* Every matrix command asks for the current matrix before changing it, so this one line covers
+     * translate, scale, multiply, load and identity without having to find each of them. Callers
+     * that only read cost a rebuild that changes nothing. */
+    s_lightCacheDirty = 1;
     switch( s_curMtxMode )
     {
         case GX_MTXMODE_PROJECTION:
@@ -506,9 +533,7 @@ void G3SIM_Color(u16 color)
     }
 
     //printf("Color: %d %d %d\n", r, g, b);
-    s_g3CurColor[0] = r;
-    s_g3CurColor[1] = g;
-    s_g3CurColor[2] = b;
+    G3SIM_SetCurColor(r, g, b);
 
     return;
 }
@@ -812,6 +837,7 @@ void G3SIM_DecodeTexDirect(u8* vramTex, u8* out, u32 s, u32 t)
 
 void G3SIM_DiffAmb(u32 data)
 {
+    s_lightCacheDirty = 1;
     u8 diffuseRed = (data & 0b11111);
     u8 diffuseGreen = (data & 0b1111100000) >> 5;
     u8 diffuseBlue = (data & 0b111110000000000) >> 10;
@@ -821,9 +847,7 @@ void G3SIM_DiffAmb(u32 data)
     u8 ambientBlue = (data & 0b1111100000000000000000000000000) >> 26;
 
     if(setVtxColor) {
-        s_g3CurColor[0] = diffuseRed << 3;
-        s_g3CurColor[1] = diffuseGreen << 3;
-        s_g3CurColor[2] = diffuseBlue << 3;
+        G3SIM_SetCurColor(diffuseRed << 3, diffuseGreen << 3, diffuseBlue << 3);
     }
     s_g3DiffuseColor[0] = diffuseRed << 3;
     s_g3DiffuseColor[1] = diffuseGreen << 3;
@@ -855,6 +879,7 @@ void G3SIM_Identity()
 
 void G3SIM_LightColor(u32 data)
 {
+    s_lightCacheDirty = 1;
     u8 lightRed = (data & 0b11111);
     u8 lightGreen = (data & 0b1111100000) >> 5;
     u8 lightBlue = (data & 0b111110000000000) >> 10;
@@ -896,6 +921,7 @@ static inline float G3SIM_Decode10(u32 packed)
 
 void G3SIM_LightVector(u32 data)
 {
+    s_lightCacheDirty = 1;
     u8 lightNum = (data & 0b11000000000000000000000000000000) >> 30;
 
     s_G3LightVector[lightNum][0] = G3SIM_Decode10(data);
@@ -1169,6 +1195,7 @@ void G3SIM_MtxPop(u8 num)
         
         //Copy to current position and vector matrix
         memcpy( &currentPositionMatrix, &curMtxStack->mtxs[curMtxStack->stackPtr], sizeof(G3SIM_Matrix_t));
+        s_lightCacheDirty = 1;
         memcpy( &currentVectorMatrix, &curMtxStack->mtxs[curMtxStack->stackPtr], sizeof(G3SIM_Matrix_t));
         calculateClipMatrix();
     }
@@ -1229,6 +1256,7 @@ void G3SIM_MtxRestore(u8 idx)
         G3SIM_MatrixStack_t * positionMtxStack = getPositionMatrixStack();
         G3SIM_MatrixStack_t * vectorMtxStack = getVectorMatrixStack();
         memcpy( &currentPositionMatrix, &positionMtxStack->mtxs[idx], sizeof(G3SIM_Matrix_t) );
+        s_lightCacheDirty = 1;
         memcpy( &currentVectorMatrix, &vectorMtxStack->mtxs[idx], sizeof(G3SIM_Matrix_t) );
         calculateClipMatrix();
     }
@@ -1328,10 +1356,66 @@ void G3SIM_MtxTranslate(fx32* trans)
     }
 }
 
+/* ---------------------------------------------------------------- the lighting cache
+ *
+ * G3SIM_Normal runs once per vertex -- fourteen thousand times a frame in the field -- and every
+ * time it rebuilt the same things from scratch: the vector matrix converted from fixed point to
+ * float (nine conversions, then nine more per enabled light), each light's direction multiplied
+ * through that matrix, and every material-times-light colour product. None of those depend on the
+ * vertex. They depend on the vector matrix, the lights and the material, all of which change once
+ * per object or per material rather than per vertex.
+ *
+ * They are computed here instead, when something they depend on has changed. The dirty flag is set
+ * by every writer of those things, and by getCurrentMatrix(), which every matrix command goes
+ * through -- a flag set when nothing actually changed only costs one rebuild.
+ */
+static float s_vecMtxF[3][3];          /* the vector matrix's rotation part, in float */
+static float s_lightDirF[4][3];        /* each light's direction through that matrix */
+static float s_lightConst[4][3];       /* specular + ambient: what a light adds whatever the normal */
+static float s_lightDiffuse[4][3];     /* what it adds per unit of diffuse level */
+
+/* Out of line on purpose: it runs once per object, not once per vertex, and inlining it put its
+ * whole body in the middle of the path that runs fourteen thousand times a frame. */
+static __attribute__((noinline)) void G3SIM_RebuildLightCache(void)
+{
+    s_lightCacheDirty = 0;
+    for (int i = 0; i < 3; i++)
+        for (int j = 0; j < 3; j++)
+            s_vecMtxF[i][j] = FX_FX32_TO_F32(currentVectorMatrix.nums[i][j]);
+
+    for (int n = 0; n < 4; n++) {
+        for (int j = 0; j < 3; j++)
+            s_lightDirF[n][j] = (s_G3LightVector[n][0] * s_vecMtxF[0][j])
+                              + (s_G3LightVector[n][1] * s_vecMtxF[1][j])
+                              + (s_G3LightVector[n][2] * s_vecMtxF[2][j]);
+        for (int c = 0; c < 3; c++) {
+            float lightC = (float)s_G3LightColor[n][c] * (1.0f / 255.0f);
+            /* Specular is still missing its shininess term, as it was before; keeping it in the
+             * constant part changes nothing about what it produces. */
+            s_lightConst[n][c] = ((float)s_g3SpecularColor[c] * (1.0f / 255.0f)) * lightC
+                               + ((float)s_g3AmbientColor[c] * (1.0f / 255.0f)) * lightC;
+            s_lightDiffuse[n][c] = ((float)s_g3DiffuseColor[c] * (1.0f / 255.0f)) * lightC;
+        }
+    }
+}
+
 void G3SIM_Normal(u32 data)
 {
     /* The same ten-bit signed components as a light's direction; see G3SIM_Decode10. */
     float normalVectorIn[3];
+
+    g3NormalCalls++;
+
+    /* No light enabled: the normal is not used for anything, and the colour is the emission colour
+     * on its own. The field sends normals for these polygons anyway, and transforming a vector
+     * nothing reads is the cheapest work to stop doing. */
+    if ((s_curPolygonAttr.lightFlag & 0xF) == 0) {
+        G3SIM_SetCurColor(s_g3EmissionColor[0], s_g3EmissionColor[1], s_g3EmissionColor[2]);
+        return;
+    }
+
+    if (s_lightCacheDirty)
+        G3SIM_RebuildLightCache();
 
     normalVectorIn[0] = G3SIM_Decode10(data);
     normalVectorIn[1] = G3SIM_Decode10(data >> 10);
@@ -1339,21 +1423,21 @@ void G3SIM_Normal(u32 data)
 
     //Multiply by the vector matrix
     float normalVector[3];
-    normalVector[0] = (normalVectorIn[0] * FX_FX32_TO_F32(currentVectorMatrix.nums[0][0]))
-                    + (normalVectorIn[1] * FX_FX32_TO_F32(currentVectorMatrix.nums[1][0]))
-                    + (normalVectorIn[2] * FX_FX32_TO_F32(currentVectorMatrix.nums[2][0]));
-    
-    normalVector[1] = (normalVectorIn[0] * FX_FX32_TO_F32(currentVectorMatrix.nums[0][1]))
-                    + (normalVectorIn[1] * FX_FX32_TO_F32(currentVectorMatrix.nums[1][1]))
-                    + (normalVectorIn[2] * FX_FX32_TO_F32(currentVectorMatrix.nums[2][1]));
+    normalVector[0] = (normalVectorIn[0] * s_vecMtxF[0][0])
+                    + (normalVectorIn[1] * s_vecMtxF[1][0])
+                    + (normalVectorIn[2] * s_vecMtxF[2][0]);
 
-    normalVector[2] = (normalVectorIn[0] * FX_FX32_TO_F32(currentVectorMatrix.nums[0][2]))
-                    + (normalVectorIn[1] * FX_FX32_TO_F32(currentVectorMatrix.nums[1][2]))
-                    + (normalVectorIn[2] * FX_FX32_TO_F32(currentVectorMatrix.nums[2][2]));
+    normalVector[1] = (normalVectorIn[0] * s_vecMtxF[0][1])
+                    + (normalVectorIn[1] * s_vecMtxF[1][1])
+                    + (normalVectorIn[2] * s_vecMtxF[2][1]);
+
+    normalVector[2] = (normalVectorIn[0] * s_vecMtxF[0][2])
+                    + (normalVectorIn[1] * s_vecMtxF[1][2])
+                    + (normalVectorIn[2] * s_vecMtxF[2][2]);
 
     // Calculate the color
 
-    float color[3] = {};
+    float color[3];
 
     color[0] = (float)s_g3EmissionColor[0] * (1.0f / 255.0f);
     color[1] = (float)s_g3EmissionColor[1] * (1.0f / 255.0f);
@@ -1364,44 +1448,22 @@ void G3SIM_Normal(u32 data)
         {
             // Light is enabled
 
-            //Multiply light vector by vector matrix
-            float lightVector[3];
-            lightVector[0] = (s_G3LightVector[lightNum][0] * FX_FX32_TO_F32(currentVectorMatrix.nums[0][0]))
-                           + (s_G3LightVector[lightNum][1] * FX_FX32_TO_F32(currentVectorMatrix.nums[1][0]))
-                           + (s_G3LightVector[lightNum][2] * FX_FX32_TO_F32(currentVectorMatrix.nums[2][0]));
-
-            lightVector[1] = (s_G3LightVector[lightNum][0] * FX_FX32_TO_F32(currentVectorMatrix.nums[0][1]))
-                           + (s_G3LightVector[lightNum][1] * FX_FX32_TO_F32(currentVectorMatrix.nums[1][1]))
-                           + (s_G3LightVector[lightNum][2] * FX_FX32_TO_F32(currentVectorMatrix.nums[2][1]));
-
-            lightVector[2] = (s_G3LightVector[lightNum][0] * FX_FX32_TO_F32(currentVectorMatrix.nums[0][2]))
-                           + (s_G3LightVector[lightNum][1] * FX_FX32_TO_F32(currentVectorMatrix.nums[1][2]))
-                           + (s_G3LightVector[lightNum][2] * FX_FX32_TO_F32(currentVectorMatrix.nums[2][2]));
-
-            //Calculate Diffuse level
-            float diffuseLevel = (lightVector[0] * normalVector[0])
-                               + (lightVector[1] * normalVector[1])
-                               + (lightVector[2] * normalVector[2]);
+            //Calculate Diffuse level. The light's direction has already been through the vector
+            //matrix; see the cache above.
+            float diffuseLevel = (s_lightDirF[lightNum][0] * normalVector[0])
+                               + (s_lightDirF[lightNum][1] * normalVector[1])
+                               + (s_lightDirF[lightNum][2] * normalVector[2]);
 
             diffuseLevel = diffuseLevel * -1.0f;
             if(diffuseLevel < 0.0f) {
                 diffuseLevel = 0.0f;
             }
 
-            //Specular color
-            color[0] = color[0] + (((float)s_g3SpecularColor[0] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][0] * (1.0f / 255.0f))); // * ShininessLevel TODO
-            color[1] = color[1] + (((float)s_g3SpecularColor[1] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][1] * (1.0f / 255.0f))); // * ShininessLevel TODO
-            color[2] = color[2] + (((float)s_g3SpecularColor[2] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][2] * (1.0f / 255.0f))); // * ShininessLevel TODO
-
-            //Diffuse color
-            color[0] = color[0] + (((float)s_g3DiffuseColor[0] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][0] * (1.0f / 255.0f)) * diffuseLevel); // * DiffuseLevel TODO
-            color[1] = color[1] + (((float)s_g3DiffuseColor[1] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][1] * (1.0f / 255.0f)) * diffuseLevel); // * DiffuseLevel TODO
-            color[2] = color[2] + (((float)s_g3DiffuseColor[2] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][2] * (1.0f / 255.0f)) * diffuseLevel); // * DiffuseLevel TODO
-
-            //Ambient color
-            color[0] = color[0] + (((float)s_g3AmbientColor[0] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][0] * (1.0f / 255.0f)));
-            color[1] = color[1] + (((float)s_g3AmbientColor[1] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][1] * (1.0f / 255.0f)));
-            color[2] = color[2] + (((float)s_g3AmbientColor[2] * (1.0f / 255.0f)) * ((float)s_G3LightColor[lightNum][2] * (1.0f / 255.0f)));
+            /* Specular and ambient do not depend on the normal, so they are one cached term; the
+             * diffuse coefficient is the other, scaled by the level just computed. */
+            color[0] = color[0] + s_lightConst[lightNum][0] + s_lightDiffuse[lightNum][0] * diffuseLevel;
+            color[1] = color[1] + s_lightConst[lightNum][1] + s_lightDiffuse[lightNum][1] * diffuseLevel;
+            color[2] = color[2] + s_lightConst[lightNum][2] + s_lightDiffuse[lightNum][2] * diffuseLevel;
         }
     }
 
@@ -1415,9 +1477,10 @@ void G3SIM_Normal(u32 data)
         color[2] = 1.0f;
     }
 
-    s_g3CurColor[0] = (u8)(color[0] * 255.0f);
-    s_g3CurColor[1] = (u8)(color[1] * 255.0f);
-    s_g3CurColor[2] = (u8)(color[2] * 255.0f);
+    /* Through the byte, deliberately. Taking the float straight across would be finer than what
+     * this produced before, and the point here is to do the conversion once per normal instead of
+     * once per vertex -- not to change what comes out. */
+    G3SIM_SetCurColor((u8)(color[0] * 255.0f), (u8)(color[1] * 255.0f), (u8)(color[2] * 255.0f));
 }
 
 //PolygonAttr
@@ -1487,6 +1550,7 @@ void G3SIM_PolygonAttr(u32 data)
 
 void G3SIM_SpecEmi(u32 data)
 {
+    s_lightCacheDirty = 1;
     u8 specularRed = (data & 0b11111);
     u8 specularGreen = (data & 0b1111100000) >> 5;
     u8 specularBlue = (data & 0b111110000000000) >> 10;
@@ -1496,9 +1560,7 @@ void G3SIM_SpecEmi(u32 data)
     u8 emissionBlue = (data & 0b1111100000000000000000000000000) >> 26;
 
     if(setVtxColor) {
-        s_g3CurColor[0] = specularRed << 3;
-        s_g3CurColor[1] = specularGreen << 3;
-        s_g3CurColor[2] = specularBlue << 3;
+        G3SIM_SetCurColor(specularRed << 3, specularGreen << 3, specularBlue << 3);
     }
     s_g3SpecularColor[0] = specularRed << 3;
     s_g3SpecularColor[1] = specularGreen << 3;
@@ -1598,6 +1660,7 @@ void G3SIM_TexPlttBase(u32 data)
 //Add a vertex
 void G3SIM_Vtx(s16 x, s16 y, s16 z)
 {
+    g3VtxCalls++;
     fx32 fxX;
     fx32 fxY;
     fx32 fxZ;
@@ -1615,9 +1678,9 @@ void G3SIM_Vtx(s16 x, s16 y, s16 z)
     s_g3PolygonVerts[s_G3numInPoly].z = fxZ;
     s_g3PolygonVerts[s_G3numInPoly].w = fxW;
 
-    s_g3PolygonVerts[s_G3numInPoly].r = (float)s_g3CurColor[0] * (1.0f / 255.0f);
-    s_g3PolygonVerts[s_G3numInPoly].g = (float)s_g3CurColor[1] * (1.0f / 255.0f);
-    s_g3PolygonVerts[s_G3numInPoly].b = (float)s_g3CurColor[2] * (1.0f / 255.0f);
+    s_g3PolygonVerts[s_G3numInPoly].r = s_g3CurColorF[0];
+    s_g3PolygonVerts[s_G3numInPoly].g = s_g3CurColorF[1];
+    s_g3PolygonVerts[s_G3numInPoly].b = s_g3CurColorF[2];
     s_g3PolygonVerts[s_G3numInPoly].a = s_curPolygonAttr.alpha;
 
     s_g3PolygonVerts[s_G3numInPoly].s = s_g3NextTexCoordS * s_texInvSSize;

@@ -623,6 +623,18 @@ extern "C" void VitaNativeG3LayerTake(unsigned *wantedFrames, unsigned *litPixel
 	g3Wanted = g3Lit = 0;
 }
 
+/* Vertices and normals the game sent, defined in the simulator; see g3_handler.cpp. */
+extern "C" unsigned g3VtxCalls, g3NormalCalls;
+
+extern "C" void VitaNativeG3VertexTake(unsigned *verts, unsigned *normals)
+{
+	if (verts)
+		*verts = g3VtxCalls;
+	if (normals)
+		*normals = g3NormalCalls;
+	g3VtxCalls = g3NormalCalls = 0;
+}
+
 extern "C" void VitaNativeG3DroppedTake(unsigned *atW, unsigned *offScreen)
 {
 	if (atW)
