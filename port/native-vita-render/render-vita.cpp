@@ -312,7 +312,7 @@ static void Compose(const FrameJob &j)
 	 * rather than draw something plausible. */
 	if ((reg32(0x64) & 0x80000000u) || ((a >> 16) & 3) == 3) {
 		VitaNativeMemLog("[RENDER] unsupported display capture or main-memory FIFO mode");
-		return -2;
+		return;
 	}
 
 	/* Engine B (the touch screen) holds still for long stretches -- a menu, a map, the party. It is

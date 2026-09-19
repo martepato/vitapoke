@@ -47,6 +47,7 @@ extern "C" void VitaNativeMemLog(const char *, ...);
 extern "C" void VitaNativeFatal(const char *);
 extern "C" unsigned long long VitaOS_Now(void);
 extern "C" u8 s_HW_LCDC_VRAM[0xA4000];
+extern "C" unsigned char VitaNative_GfxRegisters[];
 
 /* Microseconds spent submitting the DS's 3D geometry, accumulated. The game profiler (gameprof.c,
  * DEV builds) subtracts it from the game code it happens inside, so that a scene's cost is reported
@@ -91,6 +92,113 @@ PFNGLDEPTHFUNCPROC glad_glDepthFunc = OnDepthFunc;
 
 }
 
+/* ---------------------------------------------------------------- where texture memory really is
+ *
+ * The geometry engine addresses textures and their palettes in flat spaces of its own -- 512 KB of
+ * image in four 128 KB slots, 96 KB of palette in six 16 KB ones -- and which VRAM bank serves which
+ * slot is whatever the game last wrote to VRAMCNT. The DS SDK offers a fixed menu of arrangements
+ * and Pokemon Platinum uses most of it: the opening and the title screen put textures in bank A with
+ * their palettes in E, and the field, the battles and the menus put the palettes in F and G instead.
+ *
+ * Reading the palette from bank E regardless is why the overworld drew black. In the field E is
+ * engine A's sprite graphics, so what this read as sixteen colours was whatever happened to be
+ * there, and where nothing had been written it was zeroes: every texel colour 0, which with the
+ * transparency bit set is every texel invisible. The textures that still appeared were the
+ * direct-colour ones, which have no palette to get wrong.
+ *
+ * So both spaces are resolved here, a slot at a time, from the registers the SDK writes. Nothing is
+ * assumed about which bank is where, and a slot no bank serves reads as nothing rather than as
+ * somebody else's memory.
+ */
+
+static unsigned bankReg(unsigned index)   /* 0 = VRAMCNT_A ... 8 = VRAMCNT_I */
+{
+	return *(volatile u8 *)(VitaNative_GfxRegisters + 0x240 + index);
+}
+
+/* The LCDC offset of one 128 KB texture-image slot, or ~0 when no bank is mapped to it. Banks A and
+ * B have a two-bit MST field where C and D have three; in all four, texture is MST 3 and the slot is
+ * the OFS field. */
+static unsigned texImageSlot(unsigned slot)
+{
+	static const unsigned lcdc[4] = { 0x00000, 0x20000, 0x40000, 0x60000 };
+	static const unsigned mst[4] = { 0x03, 0x03, 0x07, 0x07 };
+
+	for (unsigned i = 0; i < 4; i++) {
+		unsigned c = bankReg(i);
+		if ((c & 0x80) && (c & mst[i]) == 3 && ((c >> 3) & 3) == slot)
+			return lcdc[i];
+	}
+	return ~0u;
+}
+
+/* The LCDC offset of one 16 KB texture-palette slot, or ~0 when no bank is mapped to it. Bank E is
+ * 64 KB and covers slots 0 to 3 in one go; F and G are 16 KB each and their OFS selects slot 0, 1, 4
+ * or 5. */
+static unsigned texPlttSlot(unsigned slot)
+{
+	unsigned c = bankReg(4);
+
+	if ((c & 0x87) == 0x83 && slot < 4)
+		return 0x80000 + slot * 0x4000;
+	for (unsigned i = 0; i < 2; i++) {
+		c = bankReg(5 + i);
+		if ((c & 0x87) == 0x83) {
+			unsigned ofs = (c >> 3) & 3;
+			if ((ofs & 1) + (ofs >> 1) * 4 == slot)
+				return 0x90000 + i * 0x4000;
+		}
+	}
+	return ~0u;
+}
+
+/* The bytes behind `bytes` of one of those spaces from `addr`, or NULL if any of it is in a slot no
+ * bank serves. A run may cross a slot boundary, which textures larger than a slot do, but only where
+ * the next slot is the next block of LCDC along -- which is what consecutive banks give, and is the
+ * only way the DS's flat space is contiguous in memory. */
+static const u8 *texRange(unsigned addr, unsigned bytes, unsigned slotSize,
+                          unsigned (*resolve)(unsigned))
+{
+	unsigned first = addr / slotSize;
+	unsigned last = (addr + (bytes ? bytes - 1 : 0)) / slotSize;
+	unsigned base = resolve(first);
+
+	if (base == ~0u)
+		return NULL;
+	for (unsigned s = first + 1; s <= last; s++)
+		if (resolve(s) != base + (s - first) * slotSize)
+			return NULL;
+	return s_HW_LCDC_VRAM + base + (addr - first * slotSize);
+}
+
+/* How much of each space one texture occupies: the DS's six formats at 2, 4, 8 and 16 bits a texel,
+ * and the palette each of them indexes. Direct colour has no palette. Zero means the format is not
+ * one this port decodes. */
+static unsigned texImageBytes(unsigned format, unsigned w, unsigned h)
+{
+	switch (format) {
+	case GX_TEXFMT_PLTT4:   return w * h / 4;
+	case GX_TEXFMT_PLTT16:  return w * h / 2;
+	case GX_TEXFMT_PLTT256: return w * h;
+	case GX_TEXFMT_A3I5:    return w * h;
+	case GX_TEXFMT_A5I3:    return w * h;
+	case GX_TEXFMT_DIRECT:  return w * h * 2;
+	default:                return 0;
+	}
+}
+
+static unsigned texPlttBytes(unsigned format)
+{
+	switch (format) {
+	case GX_TEXFMT_PLTT4:   return 4 * 2;
+	case GX_TEXFMT_PLTT16:  return 16 * 2;
+	case GX_TEXFMT_PLTT256: return 256 * 2;
+	case GX_TEXFMT_A3I5:    return 32 * 2;
+	case GX_TEXFMT_A5I3:    return 8 * 2;
+	default:                return 0;
+	}
+}
+
 /* ---------------------------------------------------------------- the texture cache
  *
  * A DS texture is palette indices in VRAM plus a palette somewhere else, in one of six formats. The
@@ -115,7 +223,8 @@ PFNGLDEPTHFUNCPROC glad_glDepthFunc = OnDepthFunc;
 struct TextureEntry {
 	unsigned offset, pal, format, w, h, color0;
 	unsigned texture;
-	u8 *snapshot;       /* what it was decoded from: w*h of VRAM, then 64 bytes of palette */
+	u8 *snapshot;       /* what it was decoded from: the texture's bytes, then its palette's */
+	unsigned imageBytes, plttBytes;
 	unsigned bytes;
 	unsigned lastUse;   /* the value of `binds` when this entry was last wanted */
 };
@@ -123,8 +232,10 @@ struct TextureEntry {
 static TextureEntry cache[TEXTURE_SLOTS];
 static unsigned cacheSize, cacheBytes;
 static unsigned decodes, binds, hits, evictions;
-/* How many times VitaGpuTextureCreate has said no; only the first few reach the log. */
-static unsigned refusals;
+/* How many times VitaGpuTextureCreate has said no, how many textures wanted a format this port does
+ * not decode, and how many asked for a VRAM slot no bank was mapped to. Only the first few of each
+ * reach the log. */
+static unsigned refusals, unsupportedFormats, unmapped;
 
 /* Give up the least recently used entry, so that a scene needing more than the cache holds keeps
  * drawing with textures rather than without. Least recently used, rather than the oldest: a scene
@@ -163,12 +274,56 @@ static unsigned CurrentTexture(void)
 	binds++;
 	if (p.textureFormat == 0)
 		return 0;
-	/* Bounds first: these parameters come from game data, and a bad one would be a read off the
-	 * end of VRAM. */
-	if (p.textureSSize > 512 || p.textureTSize > 512 || p.textureOffset > 0x20000 ||
-	    (unsigned)(p.textureSSize * p.textureTSize) > 0x20000 - p.textureOffset ||
-	    s_texPlttBase > 0x10000 - 64) {
-		VitaNativeFatal("3D texture parameters out of range");
+
+	const unsigned imageBytes = texImageBytes(p.textureFormat, p.textureSSize, p.textureTSize);
+	const unsigned plttBytes = texPlttBytes(p.textureFormat);
+
+	if (!imageBytes) {
+		/* The one format this port does not decode is 4x4 block compression, which needs a second
+		 * run of palette indices in a different place. Say so once; the alternative to drawing it
+		 * untextured would be drawing it wrong. */
+		if (unsupportedFormats++ == 0)
+			VitaNativeMemLog("[TEXTURE] DS texture format %u is not decoded here", p.textureFormat);
+		return 0;
+	}
+	/* Sizes are a three-bit field each, so they cannot exceed 1024; anything else would mean the
+	 * simulator handed over something it did not decode, which is a bug in this port rather than in
+	 * the game's data. */
+	if (p.textureSSize > 1024 || p.textureTSize > 1024)
+		VitaNativeFatal("3D texture size out of range");
+
+	/* Where the DS is really keeping this texture and its palette this frame. Either can come back
+	 * NULL, which on hardware is a slot with no bank behind it: nothing to read, so nothing to
+	 * draw with. */
+	const u8 *src = texRange(p.textureOffset, imageBytes, 0x20000, texImageSlot);
+	const u16 *pal = plttBytes
+	                     ? (const u16 *)texRange(s_texPlttBase, plttBytes, 0x4000, texPlttSlot)
+	                     : NULL;
+
+	/* Which banks this scene is really using, the first time it uses them. Three or four lines in a
+	 * run, and they are the difference between "the field draws black" and "the field's palettes are
+	 * in F and G and this port was reading E". */
+	{
+		/* The bank an address landed in, rather than the address: the low bits are the texture's own
+		 * place inside it and change with every bind. */
+		unsigned imageBank = src ? ((unsigned)((const u8 *)src - s_HW_LCDC_VRAM) & ~0x1FFFFu) : ~0u;
+		unsigned plttBank = pal ? ((unsigned)((const u8 *)pal - s_HW_LCDC_VRAM) & ~0x3FFFu) : ~0u;
+		static unsigned lastImageBank = ~1u, lastPlttBank = ~1u;
+
+		if (imageBank != lastImageBank || (plttBytes && plttBank != lastPlttBank)) {
+			lastImageBank = imageBank;
+			if (plttBytes)
+				lastPlttBank = plttBank;
+			VitaNativeMemLog("[TEXTURE] images in LCDC %05x, palettes in LCDC %05x", imageBank,
+			                 plttBytes ? plttBank : ~0u);
+		}
+	}
+
+	if (!src || (plttBytes && !pal)) {
+		if (unmapped++ < 8)
+			VitaNativeMemLog("[TEXTURE] no VRAM bank holds texture %05x/palette %05x%s",
+			                 p.textureOffset, s_texPlttBase,
+			                 unmapped == 8 ? " (not reporting any more of these)" : "");
 		return 0;
 	}
 
@@ -176,8 +331,8 @@ static unsigned CurrentTexture(void)
 		TextureEntry &e = cache[i];
 		if (e.offset == p.textureOffset && e.pal == s_texPlttBase && e.format == p.textureFormat &&
 		    e.w == p.textureSSize && e.h == p.textureTSize && e.color0 == p.color0 &&
-		    !memcmp(e.snapshot, s_HW_LCDC_VRAM + p.textureOffset, e.w * e.h) &&
-		    !memcmp(e.snapshot + e.w * e.h, s_HW_LCDC_VRAM + 0x80000 + s_texPlttBase, 64)) {
+		    !memcmp(e.snapshot, src, imageBytes) &&
+		    (!plttBytes || !memcmp(e.snapshot + imageBytes, pal, plttBytes))) {
 			hits++;
 			e.lastUse = binds;
 			return e.texture;
@@ -187,8 +342,6 @@ static unsigned CurrentTexture(void)
 	{
 		unsigned w = p.textureSSize, h = p.textureTSize, bytes = w * h * 4;
 		u8 *pixels;
-		u8 *src = s_HW_LCDC_VRAM + p.textureOffset;
-		u16 *pal = (u16 *)(s_HW_LCDC_VRAM + 0x80000 + s_texPlttBase);
 
 		/* Make room. One texture cannot be larger than the budget -- the DS cannot address one
 		 * that big -- so this terminates with room for it. */
@@ -204,20 +357,24 @@ static unsigned CurrentTexture(void)
 		pixels = (u8 *)malloc(bytes);
 		if (!pixels)
 			VitaNativeFatal("out of memory decoding a 3D texture");
+		/* The decoders take the bytes as they lie in VRAM; const is dropped because libntr's
+		 * signatures predate it, and none of them writes through these. */
+		u8 *image = const_cast<u8 *>(src);
+		u16 *colors = const_cast<u16 *>(pal);
+
 		switch (p.textureFormat) {
-		case GX_TEXFMT_PLTT4:   G3SIM_DecodeTex4(src, pal, pixels, w, h); break;
-		case GX_TEXFMT_PLTT16:  G3SIM_DecodeTex16(src, pal, pixels, w, h); break;
-		case GX_TEXFMT_PLTT256: G3SIM_DecodeTex256(src, pal, pixels, w, h); break;
-		case GX_TEXFMT_A3I5:    G3SIM_DecodeTexA3I5(src, pal, pixels, w, h); break;
-		case GX_TEXFMT_A5I3:    G3SIM_DecodeTexA5I3(src, pal, pixels, w, h); break;
-		case GX_TEXFMT_DIRECT:  G3SIM_DecodeTexDirect(src, pixels, w, h); break;
+		case GX_TEXFMT_PLTT4:   G3SIM_DecodeTex4(image, colors, pixels, w, h); break;
+		case GX_TEXFMT_PLTT16:  G3SIM_DecodeTex16(image, colors, pixels, w, h); break;
+		case GX_TEXFMT_PLTT256: G3SIM_DecodeTex256(image, colors, pixels, w, h); break;
+		case GX_TEXFMT_A3I5:    G3SIM_DecodeTexA3I5(image, colors, pixels, w, h); break;
+		case GX_TEXFMT_A5I3:    G3SIM_DecodeTexA5I3(image, colors, pixels, w, h); break;
+		case GX_TEXFMT_DIRECT:  G3SIM_DecodeTexDirect(image, pixels, w, h); break;
 		default:
-			VitaNativeMemLog("[TEXTURE] unsupported DS texture format %u", p.textureFormat);
 			free(pixels);
 			return 0;
 		}
 		entry = &cache[cacheSize];
-		entry->snapshot = (u8 *)malloc(w * h + 64);
+		entry->snapshot = (u8 *)malloc(imageBytes + plttBytes);
 		if (!entry->snapshot)
 			VitaNativeFatal("out of memory snapshotting a 3D texture");
 		/* The decoders write R,G,B,A bytes, which is what the GPU layer takes. */
@@ -234,8 +391,11 @@ static unsigned CurrentTexture(void)
 				                 refusals == 8 ? " (not reporting any more of these)" : "");
 			return 0;
 		}
-		memcpy(entry->snapshot, src, w * h);
-		memcpy(entry->snapshot + w * h, s_HW_LCDC_VRAM + 0x80000 + s_texPlttBase, 64);
+		memcpy(entry->snapshot, src, imageBytes);
+		if (plttBytes)
+			memcpy(entry->snapshot + imageBytes, pal, plttBytes);
+		entry->imageBytes = imageBytes;
+		entry->plttBytes = plttBytes;
 		entry->offset = p.textureOffset;
 		entry->pal = s_texPlttBase;
 		entry->format = p.textureFormat;

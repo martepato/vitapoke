@@ -379,13 +379,25 @@ port turns its commands into triangles (18 to 162 polygons a frame, climbing thr
 the 2D engine asks for the layer to be composited in. What has not happened is the drawing, because
 that is the part behind the shader compiler. Two things to check first when it does: the depth
 convention (the DS's far plane is +1 and `glOrtho` with a near of -1 maps an eye z of -1 to the far
-plane, so the depth is handed over negated -- see `G3SIM_AddVtx`), and the texture cache, which has
-sixteen slots and a megabyte and no eviction, so a scene that needs more says so in the log rather
-than silently drawing the wrong thing.
+plane, so the depth is handed over negated -- see `G3SIM_AddVtx`), and the texture cache.
 
-One thing the runs did settle: the game asks for far more texture *binds* than distinct textures --
-roughly two thousand binds per sixty frames in the cutscene -- so the cache being a cache, rather than
-a decode per bind, matters. Its hit counter is the number to watch on the first hardware run.
+Both have since run against the real game. The cache is 256 slots and 8 MB with least-recently-used
+eviction, because sixteen slots was the binding constraint rather than the byte budget: the title
+screen filled it at 76 KB and then drew untextured for eighty thousand frames. The game asks for far
+more texture *binds* than distinct textures -- 26 binds a frame against 147 distinct textures in a
+field scene, 92% of them hits -- so the cache being a cache, rather than a decode per bind, matters.
+
+The other thing the real game settled is where texture memory *is*. The geometry engine addresses
+textures in a flat 512 KB space and their palettes in a flat 96 KB one, and which VRAM bank serves
+which part of each is whatever the game last wrote to VRAMCNT. This port read the image from bank A
+and the palette from bank E and asked no questions, which is right for the opening and the title
+screen and wrong for most of the rest of the game: Platinum puts texture palettes in F and G at 43 of
+the 67 places it sets them up, and textures in B or C at 23. The overworld drew black because of it --
+palette read out of bank E, which in the field is engine A's sprite graphics, so every texel came out
+colour 0, and the only textures that still appeared were the direct-colour ones that have no palette.
+Both spaces are now resolved a slot at a time from the registers (`texImageSlot`, `texPlttSlot`,
+`texRange` in `g3_backend.cpp`), and a slot no bank serves reads as nothing rather than as somebody
+else's memory. The log names the banks in use whenever they change.
 
 ## The game's data: unpacked at build time, not read from a ROM
 

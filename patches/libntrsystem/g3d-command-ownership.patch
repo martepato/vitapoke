@@ -1,6 +1,39 @@
 --- a/libraries/g3d/src/gecom.c
 +++ b/libraries/g3d/src/gecom.c
-@@ -160,16 +160,31 @@
+@@ -50,15 +50,23 @@
+     if (NNS_G3dGeBuffer &&
+         NNS_G3dGeBuffer->idx > 0) {
+         #ifdef SDK_PORT
+-        draw_msg_t * msg;
+-        msg = malloc( sizeof( draw_msg_t ) );
+-        msg->type = DRAW_CMD_G3_CMD_LIST;
+-        u8 * cmdBuf = malloc( (NNS_G3dGeBuffer->idx << 2) );
+-        memcpy(cmdBuf, NNS_G3dGeBuffer->data, NNS_G3dGeBuffer->idx << 2);
+-        msg->data.ptr = cmdBuf;
+-        msg->size = (NNS_G3dGeBuffer->idx << 2);
+-        SIM_HandleG3Command( msg );
+-        free( msg );
++        /* The same two corrections as NNS_G3dGeBufferOP_N below, plus one this function needed on
++         * its own account.
++         *
++         * The command list is the game's buffer and SIM_HandleG3Command only reads it, so it is
++         * handed over as it lies: the copy and its malloc leaked a buffer per flush, and there was
++         * nothing for the copy to achieve that the hardware path below does not achieve by DMAing
++         * out of the same memory.
++         *
++         * Emptying the buffer afterwards is the correction of its own: idx = 0 was inside the
++         * hardware branch, so this path left every flushed command in place and re-sent the whole
++         * accumulated list on the next flush, until the buffer filled. */
++        draw_msg_t msg;
++        msg.type = DRAW_CMD_G3_CMD_LIST;
++        msg.data.ptr = (u8 *)&NNS_G3dGeBuffer->data[0];
++        msg.size = (NNS_G3dGeBuffer->idx << 2);
++        SIM_HandleG3Command( &msg );
++        NNS_G3dGeBuffer->idx = 0;
+         #else
+         sendNB(&NNS_G3dGeBuffer->data[0], (void *)&reg_G3X_GXFIFO, NNS_G3dGeBuffer->idx << 2);
+         NNS_G3dGeBuffer->idx = 0;
+@@ -160,16 +168,31 @@
      }
  
      #ifdef SDK_PORT
