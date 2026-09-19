@@ -1,0 +1,101 @@
+--- a/include/nitro/card/backup.h
++++ b/include/nitro/card/backup.h
+@@ -29,37 +29,14 @@
+   SDK_INLINE BOOL CARDi_ReadBackup(u32 src, void *dst, u32 len,
+                                    MIDmaCallback callback, void *arg, BOOL is_async)
+   {
+-    #ifdef SDK_PORT
+-    FILE * backupFilePtr;
+-    backupFilePtr = fopen("save.bin", "rb");
+-    if(!backupFilePtr) {
+-      // File does not exist. Create the file
+-      backupFilePtr = fopen("save.bin", "wb");
+-
+-      // Zero out the file with the len
+-      u8 * buf = (u8*)malloc(len + src);
+-      memset(buf, 0, len + src);
+-      fwrite(buf, 1, len + src, backupFilePtr);
+-      fclose(backupFilePtr);
+-      free(buf);
+-
+-      // Reopen file
+-      backupFilePtr = fopen("save.bin", "rb");
+-    }
+-    fseek(backupFilePtr, src, SEEK_SET);
+-    fread(dst, 1, len, backupFilePtr);
+-    fclose(backupFilePtr);
+-    if( callback != NULL )
+-    {
+-      callback(arg);
+-    }
+-
+-    return TRUE;
+-    #else
++    /* The port serves the backup through CARDi_RequestStreamCommand, which port/vita/backup.c
++     * implements against the save file on the memory card. What stood here was the desktop
++     * simulator's own scaffolding: it opened a file by a bare relative name and, in two of the
++     * three places, used the handle without checking it. A console has no such file and no
++     * writable working directory, so the open returned NULL and the next line dereferenced it. */
+     return CARDi_RequestStreamCommand((u32)src, (u32)dst, len,
+                                       callback, arg, is_async,
+                                       CARD_REQ_READ_BACKUP, 1, CARD_REQUEST_MODE_RECV);
+-    #endif
+   }
+ 
+   SDK_INLINE BOOL CARDi_ProgramBackup(u32 dst, const void *src, u32 len,
+@@ -79,22 +56,14 @@
+   SDK_INLINE BOOL CARDi_WriteBackup(u32 dst, const void *src, u32 len,
+                                     MIDmaCallback callback, void *arg, BOOL is_async)
+   {
+-    #ifdef SDK_PORT
+-    FILE * backupFilePtr;
+-    backupFilePtr = fopen("save.bin", "rb+");
+-    fseek(backupFilePtr, dst, SEEK_SET);
+-    fwrite(src, 1, len, backupFilePtr);
+-    fclose(backupFilePtr);
+-    if( callback != NULL )
+-    {
+-      callback(arg);
+-    }
+-    return TRUE;
+-    #else
++    /* The port serves the backup through CARDi_RequestStreamCommand, which port/vita/backup.c
++     * implements against the save file on the memory card. What stood here was the desktop
++     * simulator's own scaffolding: it opened a file by a bare relative name and, in two of the
++     * three places, used the handle without checking it. A console has no such file and no
++     * writable working directory, so the open returned NULL and the next line dereferenced it. */
+     return CARDi_RequestStreamCommand((u32)src, (u32)dst, len, callback, arg, is_async,
+                                       CARD_REQ_WRITE_BACKUP, CARD_RETRY_COUNT_MAX,
+                                       CARD_REQUEST_MODE_SEND);
+-    #endif
+   }
+ 
+   SDK_INLINE BOOL CARDi_VerifyBackup(u32 dst, const void *src, u32 len,
+@@ -126,22 +95,14 @@
+   SDK_INLINE BOOL CARDi_WriteAndVerifyBackup(u32 dst, const void *src, u32 len,
+                                              MIDmaCallback callback, void *arg, BOOL is_async)
+   {
+-    #ifdef SDK_PORT
+-    FILE * backupFilePtr;
+-    backupFilePtr = fopen("save.bin", "rb+");
+-    fseek(backupFilePtr, dst, SEEK_SET);
+-    fwrite(src, 1, len, backupFilePtr);
+-    fclose(backupFilePtr);
+-    if( callback != NULL )
+-    {
+-      callback(arg);
+-    }
+-    return CARD_RESULT_SUCCESS;
+-    #else
++    /* The port serves the backup through CARDi_RequestStreamCommand, which port/vita/backup.c
++     * implements against the save file on the memory card. What stood here was the desktop
++     * simulator's own scaffolding: it opened a file by a bare relative name and, in two of the
++     * three places, used the handle without checking it. A console has no such file and no
++     * writable working directory, so the open returned NULL and the next line dereferenced it. */
+     return CARDi_RequestStreamCommand((u32)src, (u32)dst, len, callback, arg, is_async,
+                                       CARD_REQ_WRITE_BACKUP, CARD_RETRY_COUNT_MAX,
+                                       CARD_REQUEST_MODE_SEND_VERIFY);
+-    #endif
+   }
+ 
+   SDK_INLINE BOOL CARDi_EraseBackupSector (u32 dst, u32 len,

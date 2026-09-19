@@ -78,6 +78,8 @@ if ! done_ base; then
   (cd "$T/native-probe/pokeplatinum" && patch -p1 -s < "$ROOT/patches/pokeplatinum/local-edits.patch")
   # Who owns a geometry command list: the producer. See the patch's own comment.
   (cd "$T/native-probe/libntrsystem" && patch -p1 -s < "$ROOT/patches/libntrsystem/g3d-command-ownership.patch")
+  # The save goes through the port, not through the desktop simulator's "save.bin". Same.
+  (cd "$T/native-graphics/libntr" && patch -p1 -s < "$ROOT/patches/libntr/card-backup-through-the-port.patch")
   mark base
 fi
 

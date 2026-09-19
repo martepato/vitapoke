@@ -203,7 +203,11 @@ BOOL CARDi_RequestStreamCommand(u32 src, u32 dst, u32 length, MIDmaCallback call
 			result = CARD_RESULT_INVALID_PARAM;
 		else if (fseek(file, offset, SEEK_SET) || fread((void *)(uintptr_t)dst, 1, length, file) != length)
 			result = CARD_RESULT_FAILURE;
-	} else if (request == CARD_REQ_WRITE_BACKUP) {
+	/* Write and program are the same thing here. On the DS's flash they are not: a write erases
+	 * the sector first and a program only clears bits, so the SDK issues whichever suits what it
+	 * knows about the chip's current contents. A file has no such distinction -- the bytes that
+	 * arrive are the bytes that are stored -- so both do the same, and both verify when asked. */
+	} else if (request == CARD_REQ_WRITE_BACKUP || request == CARD_REQ_PROGRAM_BACKUP) {
 		if ((mode != CARD_REQUEST_MODE_SEND && mode != CARD_REQUEST_MODE_SEND_VERIFY) || (!src && length))
 			result = CARD_RESULT_INVALID_PARAM;
 		else if (fseek(file, offset, SEEK_SET) ||
@@ -211,6 +215,35 @@ BOOL CARDi_RequestStreamCommand(u32 src, u32 dst, u32 length, MIDmaCallback call
 			result = CARD_RESULT_FAILURE;
 		else if (mode == CARD_REQUEST_MODE_SEND_VERIFY && !Verify(offset, (const u8 *)(uintptr_t)src, length))
 			result = CARD_RESULT_FAILURE;
+	/* Erasing flash sets every bit, so that is what these write: the range the SDK named, or the
+	 * whole save for a chip erase, which carries no range of its own. Answering "unsupported"
+	 * instead -- which is what this did -- left the SDK believing the sector still held the old
+	 * contents, and a save that had been written once could not be written again. */
+	} else if (request == CARD_REQ_ERASE_PAGE_BACKUP || request == CARD_REQ_ERASE_SECTOR_BACKUP ||
+	           request == CARD_REQ_ERASE_SUBSECTOR_BACKUP || request == CARD_REQ_ERASE_CHIP_BACKUP) {
+		u32 from = request == CARD_REQ_ERASE_CHIP_BACKUP ? 0 : offset;
+		u32 count = request == CARD_REQ_ERASE_CHIP_BACKUP ? BACKUP_BYTES : length;
+
+		if (from > BACKUP_BYTES || count > BACKUP_BYTES - from) {
+			result = CARD_RESULT_INVALID_PARAM;
+		} else if (fseek(file, from, SEEK_SET)) {
+			result = CARD_RESULT_FAILURE;
+		} else {
+			u8 ones[256];
+
+			memset(ones, 0xFF, sizeof ones);
+			while (count) {
+				u32 amount = count > sizeof ones ? (u32)sizeof ones : count;
+
+				if (fwrite(ones, 1, amount, file) != amount) {
+					result = CARD_RESULT_FAILURE;
+					break;
+				}
+				count -= amount;
+			}
+			if (result == CARD_RESULT_SUCCESS && fflush(file))
+				result = CARD_RESULT_FAILURE;
+		}
 	} else if (request == CARD_REQ_VERIFY_BACKUP) {
 		if (mode != CARD_REQUEST_MODE_SEND || (!src && length))
 			result = CARD_RESULT_INVALID_PARAM;
