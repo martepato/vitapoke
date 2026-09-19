@@ -32,6 +32,7 @@ extern unsigned RenderStage(unsigned stage);
 extern void VitaNativeRenderComposedTake(unsigned *top, unsigned *bottom);
 extern unsigned VitaNativeG3Polygons(void);
 extern void VitaNativeG3DroppedTake(unsigned *atW, unsigned *offScreen);
+extern void VitaNativeG3LayerTake(unsigned *wantedFrames, unsigned *litPixels);
 extern void VitaNativeG3TextureStats(unsigned *entries, unsigned *bytes, unsigned *binds,
                                      unsigned *hits, unsigned *decodes, unsigned *evictions);
 extern void VitaNativeSoundAdvance(unsigned elapsedMicroseconds);
@@ -89,7 +90,7 @@ static void Report(void)
 	unsigned long long window = VitaOS_Now() - frameStart;
 	unsigned presentUs = 0, software2DUs = 0;
 	unsigned entries = 0, bytes = 0, binds = 0, hits = 0, decodes = 0, evictions = 0;
-	unsigned droppedW = 0, droppedFar = 0;
+	unsigned droppedW = 0, droppedFar = 0, layerWanted = 0, layerLit = 0;
 	/* Frames on which each screen was actually composed. Equal to the period means the frame caches
 	 * never hit; far below it means they are doing their job. */
 	unsigned composedTop = 0, composedBottom = 0;
@@ -99,6 +100,7 @@ static void Report(void)
 	VitaNativeRenderComposedTake(&composedTop, &composedBottom);
 	VitaNativeG3TextureStats(&entries, &bytes, &binds, &hits, &decodes, &evictions);
 	VitaNativeG3DroppedTake(&droppedW, &droppedFar);
+	VitaNativeG3LayerTake(&layerWanted, &layerLit);
 	VitaNativeMemLog("[PERF] frames=%u fps=%.2f game_us=%llu idle_us=%llu audio_us=%llu "
 	                 "render_us=%llu bind_us=%llu compose_us=%llu upload_us=%llu present_us=%llu "
 	                 "wait_us=%llu other_us=%llu "
@@ -118,7 +120,7 @@ static void Report(void)
 	                 (unsigned)(vblankWaits / REPORT_FRAMES),
 	                 (unsigned)((vblankWaits * 100 / REPORT_FRAMES) % 100),
 	                 composedTop, composedBottom,
-	                 VitaNativeG3Polygons(), droppedW, droppedFar,
+	                 VitaNativeG3Polygons(), droppedW, droppedFar, layerWanted, layerLit,
 	                 entries, bytes, binds, hits, decodes, evictions);
 	sound[0] = 0;
 	VitaNativeSoundOutputLine(sound, sizeof sound);

@@ -82,7 +82,24 @@ void SIM_u16ToRGB(u16 c, u8 *r, u8 *g, u8 *b)
 static void APIENTRY NoDebug(GLenum, GLenum, GLuint, GLenum, GLsizei, const GLchar *) { }
 static void APIENTRY OnEnable(GLenum c) { if (c == GL_CULL_FACE) cullEnabled = 1; }
 static void APIENTRY OnDisable(GLenum c) { if (c == GL_CULL_FACE) cullEnabled = 0; }
-static void APIENTRY OnCullFace(GLenum c) { cullFront = (c == GL_FRONT); }
+/* Swapped back, deliberately.
+ *
+ * The simulator does not pass the DS's choice through: for GX_CULL_BACK -- render the front surface,
+ * which is what nearly every model in this game asks for -- it calls glCullFace(GL_FRONT), and for
+ * GX_CULL_FRONT it calls GL_BACK. That is not a mistake there. Its own desktop projection reflects
+ * the image, a reflection reverses the winding of every triangle, and reversing which face is culled
+ * is how it compensates.
+ *
+ * This port's projection does not reflect anything. G3SIM_AddVtx maps the DS's x of -1..1 to 0..256
+ * and its y of -1..1 to 192..0, and the glOrtho in gpu.cpp has its bottom at 192 and its top at 0;
+ * compose the two and the result is the identity, x and y both arriving in clip space exactly as the
+ * DS produced them. So a triangle keeps the winding it had, there is nothing to compensate for, and
+ * taking the simulator's swap at face value culled precisely the faces that should have been drawn.
+ *
+ * What that looks like is the whole of the symptom: single-sided geometry -- the ground, the walls,
+ * the surface of every model -- disappears, while anything the game marks as double-sided stays. A
+ * field that is mostly black with a few textures in it, and a title screen with no Giratina on it. */
+static void APIENTRY OnCullFace(GLenum c) { cullFront = (c == GL_BACK); }
 static void APIENTRY OnDepthFunc(GLenum c) { depthLess = (c == GL_LESS); }
 
 PFNGLDEBUGMESSAGEINSERTPROC glad_glDebugMessageInsert = NoDebug;
@@ -418,6 +435,15 @@ static unsigned CurrentTexture(void)
 static struct VitaGpuVertex vertices[VERTEX_LIMIT];
 static unsigned count;
 static unsigned polygonsThisFrame;
+/* A handful of draw calls, once every so often, with everything that decides whether a polygon can
+ * be seen: how many vertices, which texture and format, and the first vertex's position, colour and
+ * alpha. Two rounds of reading this code have each found a real bug and neither was the one on the
+ * screen, so this is here to say what the geometry actually looks like by the time it reaches the
+ * GPU rather than what it ought to look like. */
+static unsigned g3DiagFrame, g3DiagLeft;
+/* Frames the 2D engine wanted the 3D layer on, and opaque pixels found in the read-back
+ * (sampled one in sixteen, so a full screen is 3072). */
+static unsigned g3Wanted, g3Lit;
 /* Set once the [G3] line below has been written. */
 static unsigned firstPolygonsReported;
 static int frameOpen;
@@ -466,7 +492,22 @@ extern "C" void G3SIM_DrawArray()
 	VitaGpuSetPolygonState(!cullEnabled ? VITAGPU_CULL_NONE
 	                                    : cullFront ? VITAGPU_CULL_FRONT : VITAGPU_CULL_BACK,
 	                       depthLess ? VITAGPU_DEPTH_LESS : VITAGPU_DEPTH_LEQUAL);
-	VitaGpuDrawTriangles(CurrentTexture(), s_texImageParam.repeatS, s_texImageParam.repeatT,
+	unsigned diagTexture = CurrentTexture();
+
+	if (g3DiagLeft) {
+		const struct VitaGpuVertex &v = vertices[0];
+
+		g3DiagLeft--;
+		VitaNativeMemLog("[G3DIAG] verts=%u tex=%u fmt=%u attr=%02x light=%x cull=%d "
+		                 "xy=%d,%d z=%d rgba=%d,%d,%d,%d",
+		                 count, diagTexture, (unsigned)s_texImageParam.textureFormat,
+		                 (unsigned)s_curPolygonAttr.alphaInt, (unsigned)s_curPolygonAttr.lightFlag,
+		                 cullEnabled ? (cullFront ? 1 : 2) : 0,
+		                 (int)v.x, (int)v.y, (int)(v.z * 1000.0f),
+		                 (int)(v.r * 255.0f), (int)(v.g * 255.0f), (int)(v.b * 255.0f),
+		                 (int)(v.a * 255.0f));
+	}
+	VitaGpuDrawTriangles(diagTexture, s_texImageParam.repeatS, s_texImageParam.repeatT,
 	                     vertices, count);
 	polygonsThisFrame += count / 3;
 	g3ProfUs += (unsigned)(VitaOS_Now() - started);
@@ -490,6 +531,8 @@ static u32 readback[256 * 192];
 
 extern "C" void VitaNativeG3FrameBegin(void)
 {
+	if (++g3DiagFrame % 600 == 0)
+		g3DiagLeft = 6;
 	polygonsThisFrame = 0;
 	count = 0;
 	frameOpen = 1;
@@ -512,9 +555,22 @@ extern "C" void VitaNativeG3FrameEnd(int wanted)
 		VitaNativeMemLog("[G3] first 3D frame: %u polygons, layer %s", polygonsThisFrame,
 		                 wanted ? "shown" : "not shown");
 	}
+	/* Whether the 2D engine asked for the 3D layer at all, and how much the GPU actually put in it.
+	 * Between the vertex list and the screen there are two places the 3D can vanish without a trace:
+	 * the 2D engine not showing the layer, and the GPU drawing nothing into it. One counter each
+	 * says which, instead of a third round of reading the code. */
+	g3Wanted += wanted ? 1 : 0;
 	VitaGpuFrameEnd3D(wanted ? readback : NULL);
 	if (!wanted)
 		return;
+	{
+		unsigned lit = 0;
+
+		for (unsigned i = 0; i < 256 * 192; i += 16)
+			if (readback[i] >> 24)
+				lit++;
+		g3Lit += lit;
+	}
 	/* 49,152 pixels, on the game thread, on every frame the field and battles draw: worth doing four
 	 * at a time. The kernel and the table below compute the same thing; see neon2d.h. */
 	Neon2D_Readback(reinterpret_cast<uint32_t *>(GPU3D::NativeFrame),
@@ -526,6 +582,15 @@ extern "C" unsigned VitaNativeG3Polygons(void) { return polygonsThisFrame; }
 /* Set by G3SIM_SubmitPolygon in the simulator front end; see the note there. */
 extern "C" unsigned g3DroppedW, g3DroppedFar;
 unsigned g3DroppedW, g3DroppedFar;
+
+extern "C" void VitaNativeG3LayerTake(unsigned *wantedFrames, unsigned *litPixels)
+{
+	if (wantedFrames)
+		*wantedFrames = g3Wanted;
+	if (litPixels)
+		*litPixels = g3Lit;
+	g3Wanted = g3Lit = 0;
+}
 
 extern "C" void VitaNativeG3DroppedTake(unsigned *atW, unsigned *offScreen)
 {
